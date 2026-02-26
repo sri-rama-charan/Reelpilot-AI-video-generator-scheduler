@@ -12,7 +12,13 @@ import {
   Zap,
   Sparkles,
 } from "lucide-react";
-import { SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
+import {
+  SignedIn,
+  SignedOut,
+  UserButton,
+  SignInButton,
+  SignUpButton,
+} from "@clerk/nextjs";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { useState } from "react";
@@ -91,17 +97,24 @@ export default function LandingPage() {
 
             <div className="hidden md:flex items-center gap-4">
               <SignedOut>
-                <Link
-                  href="/sign-in"
-                  className="text-sm font-medium text-slate-300 hover:text-white transition-colors"
+                <SignInButton
+                  mode="modal"
+                  signUpFallbackRedirectUrl="/dashboard"
+                  fallbackRedirectUrl="/dashboard"
                 >
-                  Log in
-                </Link>
-                <Link href="/sign-up">
+                  <button className="text-sm font-medium text-slate-300 hover:text-white transition-colors">
+                    Log in
+                  </button>
+                </SignInButton>
+                <SignUpButton
+                  mode="modal"
+                  signInFallbackRedirectUrl="/dashboard"
+                  fallbackRedirectUrl="/dashboard"
+                >
                   <Button className="rounded-full bg-white text-black hover:bg-slate-200 shadow-[0_0_20px_rgba(255,255,255,0.3)] transition-all duration-300 hover:shadow-[0_0_30px_rgba(255,255,255,0.5)]">
                     Start for Free
                   </Button>
-                </Link>
+                </SignUpButton>
               </SignedOut>
               <SignedIn>
                 <Link href="/dashboard">
@@ -153,27 +166,31 @@ export default function LandingPage() {
           </Link>
           <div className="flex flex-col gap-4 mt-8 w-full max-w-xs px-4">
             <SignedOut>
-              <Link
-                href="/sign-in"
-                className="w-full"
-                onClick={() => setMobileMenuOpen(false)}
+              <SignInButton
+                mode="modal"
+                signUpFallbackRedirectUrl="/dashboard"
+                fallbackRedirectUrl="/dashboard"
               >
                 <Button
                   variant="outline"
-                  className="w-full rounded-full border-white/10 bg-white/5 backdrop-blur-sm"
+                  className="w-full rounded-full border-white/10 bg-white/5 backdrop-blur-sm mb-4"
+                  onClick={() => setMobileMenuOpen(false)}
                 >
                   Log in
                 </Button>
-              </Link>
-              <Link
-                href="/sign-up"
-                className="w-full"
-                onClick={() => setMobileMenuOpen(false)}
+              </SignInButton>
+              <SignUpButton
+                mode="modal"
+                signInFallbackRedirectUrl="/dashboard"
+                fallbackRedirectUrl="/dashboard"
               >
-                <Button className="w-full rounded-full bg-white text-black">
+                <Button
+                  className="w-full rounded-full bg-white text-black mb-4"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
                   Start for Free
                 </Button>
-              </Link>
+              </SignUpButton>
             </SignedOut>
             <SignedIn>
               <Link
@@ -235,13 +252,32 @@ export default function LandingPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.3 }}
             >
-              <Button
-                size="lg"
-                className="rounded-full h-14 px-8 bg-white text-black font-semibold text-lg hover:bg-slate-200 shadow-[0_0_30px_rgba(255,255,255,0.2)] hover:shadow-[0_0_40px_rgba(255,255,255,0.4)] transition-all duration-300 group"
-              >
-                Start for Free
-                <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
-              </Button>
+              <SignedOut>
+                <SignUpButton
+                  mode="modal"
+                  signInFallbackRedirectUrl="/dashboard"
+                  fallbackRedirectUrl="/dashboard"
+                >
+                  <Button
+                    size="lg"
+                    className="rounded-full h-14 px-8 bg-white text-black font-semibold text-lg hover:bg-slate-200 shadow-[0_0_30px_rgba(255,255,255,0.2)] hover:shadow-[0_0_40px_rgba(255,255,255,0.4)] transition-all duration-300 group"
+                  >
+                    Start for Free
+                    <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                  </Button>
+                </SignUpButton>
+              </SignedOut>
+              <SignedIn>
+                <Link href="/dashboard">
+                  <Button
+                    size="lg"
+                    className="rounded-full h-14 px-8 bg-white text-black font-semibold text-lg hover:bg-slate-200 shadow-[0_0_30px_rgba(255,255,255,0.2)] hover:shadow-[0_0_40px_rgba(255,255,255,0.4)] transition-all duration-300 group"
+                  >
+                    Go to Dashboard
+                    <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                  </Button>
+                </Link>
+              </SignedIn>
               <Button
                 size="lg"
                 variant="outline"
@@ -550,12 +586,30 @@ export default function LandingPage() {
                 Join thousands of creators who are scaling their audience on
                 autopilot with ReelPilot.
               </p>
-              <Button
-                size="lg"
-                className="rounded-full h-14 px-10 bg-white text-black font-semibold text-lg hover:bg-slate-200 shadow-[0_0_30px_rgba(168,85,247,0.4)] transition-all duration-300 relative z-10"
-              >
-                Start Your Free Trial
-              </Button>
+              <SignedOut>
+                <SignUpButton
+                  mode="modal"
+                  signInFallbackRedirectUrl="/dashboard"
+                  fallbackRedirectUrl="/dashboard"
+                >
+                  <Button
+                    size="lg"
+                    className="rounded-full h-14 px-10 bg-white text-black font-semibold text-lg hover:bg-slate-200 shadow-[0_0_30px_rgba(168,85,247,0.4)] transition-all duration-300 relative z-10"
+                  >
+                    Start Your Free Trial
+                  </Button>
+                </SignUpButton>
+              </SignedOut>
+              <SignedIn>
+                <Link href="/dashboard">
+                  <Button
+                    size="lg"
+                    className="rounded-full h-14 px-10 bg-white text-black font-semibold text-lg hover:bg-slate-200 shadow-[0_0_30px_rgba(168,85,247,0.4)] transition-all duration-300 relative z-10"
+                  >
+                    Go to Dashboard
+                  </Button>
+                </Link>
+              </SignedIn>
             </div>
           </div>
         </section>

@@ -12,6 +12,7 @@ import {
   Zap,
   Sparkles,
 } from "lucide-react";
+import { SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { useState } from "react";
@@ -36,7 +37,7 @@ export default function LandingPage() {
       y: 0,
       opacity: 1,
       transition: {
-        type: "spring",
+        type: "spring" as const,
         stiffness: 100,
         damping: 10,
       },
@@ -89,15 +90,30 @@ export default function LandingPage() {
             </nav>
 
             <div className="hidden md:flex items-center gap-4">
-              <Link
-                href="/login"
-                className="text-sm font-medium text-slate-300 hover:text-white transition-colors"
-              >
-                Log in
-              </Link>
-              <Button className="rounded-full bg-white text-black hover:bg-slate-200 shadow-[0_0_20px_rgba(255,255,255,0.3)] transition-all duration-300 hover:shadow-[0_0_30px_rgba(255,255,255,0.5)]">
-                Start for Free
-              </Button>
+              <SignedOut>
+                <Link
+                  href="/sign-in"
+                  className="text-sm font-medium text-slate-300 hover:text-white transition-colors"
+                >
+                  Log in
+                </Link>
+                <Link href="/sign-up">
+                  <Button className="rounded-full bg-white text-black hover:bg-slate-200 shadow-[0_0_20px_rgba(255,255,255,0.3)] transition-all duration-300 hover:shadow-[0_0_30px_rgba(255,255,255,0.5)]">
+                    Start for Free
+                  </Button>
+                </Link>
+              </SignedOut>
+              <SignedIn>
+                <Link href="/dashboard">
+                  <Button
+                    variant="ghost"
+                    className="text-slate-300 hover:text-white transition-colors"
+                  >
+                    Dashboard
+                  </Button>
+                </Link>
+                <UserButton />
+              </SignedIn>
             </div>
 
             {/* Mobile Menu Toggle */}
@@ -136,15 +152,43 @@ export default function LandingPage() {
             Pricing
           </Link>
           <div className="flex flex-col gap-4 mt-8 w-full max-w-xs px-4">
-            <Button
-              variant="outline"
-              className="w-full rounded-full border-white/10 bg-white/5 backdrop-blur-sm"
-            >
-              Log in
-            </Button>
-            <Button className="w-full rounded-full bg-white text-black">
-              Start for Free
-            </Button>
+            <SignedOut>
+              <Link
+                href="/sign-in"
+                className="w-full"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                <Button
+                  variant="outline"
+                  className="w-full rounded-full border-white/10 bg-white/5 backdrop-blur-sm"
+                >
+                  Log in
+                </Button>
+              </Link>
+              <Link
+                href="/sign-up"
+                className="w-full"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                <Button className="w-full rounded-full bg-white text-black">
+                  Start for Free
+                </Button>
+              </Link>
+            </SignedOut>
+            <SignedIn>
+              <Link
+                href="/dashboard"
+                className="w-full"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                <Button className="w-full rounded-full bg-white text-black">
+                  Dashboard
+                </Button>
+              </Link>
+              <div className="flex justify-center mt-2">
+                <UserButton />
+              </div>
+            </SignedIn>
           </div>
         </div>
       )}

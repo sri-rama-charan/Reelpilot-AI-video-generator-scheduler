@@ -41,11 +41,12 @@ export default async function DashboardPage() {
         if (error.code === "23505") {
           dbSyncError =
             "This email is already associated with another account.";
+        } else {
+          console.error(
+            "Error updating user in Supabase:",
+            JSON.stringify(error, null, 2),
+          );
         }
-        console.error(
-          "Error updating user in Supabase:",
-          JSON.stringify(error, null, 2),
-        );
       } else {
         console.log(
           "User successfully updated in Supabase (via Server Component)",
@@ -65,11 +66,12 @@ export default async function DashboardPage() {
         if (error.code === "23505") {
           dbSyncError =
             "This email is already associated with another account. Please sign in with your original login method.";
+        } else {
+          console.error(
+            "Error inserting user into Supabase:",
+            JSON.stringify(error, null, 2),
+          );
         }
-        console.error(
-          "Error inserting user into Supabase:",
-          JSON.stringify(error, null, 2),
-        );
       } else {
         console.log(
           "User successfully inserted to Supabase (via Server Component)",
@@ -79,8 +81,8 @@ export default async function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white p-8">
-      <div className="max-w-4xl mx-auto mt-20">
+    <div className="p-8 text-white">
+      <div className="max-w-4xl mx-auto mt-8">
         <h1 className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-white/70">
           Dashboard
         </h1>

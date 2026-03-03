@@ -53,7 +53,7 @@ export async function POST(req: Request) {
   const eventType = evt.type;
 
   if (eventType === "user.created" || eventType === "user.updated") {
-    const { id, email_addresses, first_name, last_name, image_url } = evt.data;
+    const { id, email_addresses, first_name, last_name } = evt.data;
 
     const email = email_addresses?.[0]?.email_address;
 
@@ -61,13 +61,14 @@ export async function POST(req: Request) {
       return new Response("Error: No email provided", { status: 400 });
     }
 
-    const { error } = await supabaseAdmin.from("users").upsert({
-      id: id,
-      email: email,
-      first_name: first_name || "",
-      last_name: last_name || "",
-      image_url: image_url || "",
-    });
+    const { error } = await supabaseAdmin.from("users").upsert(
+      {
+        user_id: id,
+        email: email,
+        name: `${first_name || ""} ${last_name || ""}`.trim(),
+      },
+      { onConflict: "email" },
+    );
 
     if (error) {
       console.error("Error inserting user into Supabase:", error);

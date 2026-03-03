@@ -10,6 +10,7 @@ import {
   PlayCircle,
   Clock,
   Video,
+  Loader2,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import {
@@ -45,6 +46,25 @@ export function SeriesCard({ series }: { series: Series }) {
   const router = useRouter();
   const [status, setStatus] = useState(series.status || "active");
   const [isToggling, setIsToggling] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  const generateVideo = async () => {
+    try {
+      setIsGenerating(true);
+      const res = await fetch(`/api/series/${series.id}/generate`, {
+        method: "POST",
+      });
+
+      if (!res.ok) throw new Error("Failed to start video generation");
+
+      toast.success("Video generation started! Check back soon.");
+    } catch (error) {
+      console.error("Error triggering video generation:", error);
+      toast.error("Failed to start video generation");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   const styleInfo = VIDEO_STYLES.find((s) => s.id === series.video_style);
   const imageUrl = styleInfo?.image || "/placeholder.jpg"; // Fallback image
@@ -207,9 +227,17 @@ export function SeriesCard({ series }: { series: Series }) {
             <Video className="w-4 h-4 text-slate-400 group-hover/view:text-white" />
           </Button>
 
-          <Button className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white border-0 shadow-[0_0_15px_rgba(168,85,247,0.4)] transition-all">
-            <Play className="w-4 h-4 mr-2 fill-current" />
-            Generate New Video
+          <Button
+            className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white border-0 shadow-[0_0_15px_rgba(168,85,247,0.4)] transition-all disabled:opacity-60"
+            onClick={generateVideo}
+            disabled={isGenerating}
+          >
+            {isGenerating ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Play className="w-4 h-4 mr-2 fill-current" />
+            )}
+            {isGenerating ? "Starting..." : "Generate New Video"}
           </Button>
         </div>
       </div>

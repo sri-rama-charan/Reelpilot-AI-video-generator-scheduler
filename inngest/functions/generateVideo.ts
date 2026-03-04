@@ -197,41 +197,217 @@ Required JSON format:
     });
 
     // ─────────────────────────────────────────────────────────────
-    // STEP 4: Generate Captions
+    // STEP 4: Generate Captions using Deepgram Transcription
     // ─────────────────────────────────────────────────────────────
     const captions = await step.run("generate-captions", async () => {
-      // TODO: Call caption/transcription model (e.g. Whisper) with voiceAudio.audioUrl
-      console.log(
-        `[placeholder] Generating captions with style: ${series.caption_style}`,
+      const { createClient } = await import("@deepgram/sdk");
+      const dg = createClient(process.env.DEEPGRAM_API_KEY!);
+
+      // Determine language code for Deepgram (default English)
+      const langMeta = LANGUAGES.find((l) => l.language === series.language);
+      const dgLang = langMeta?.modelLangCode?.split("-")[0] ?? "en"; // "hi", "en", etc.
+
+      // Helper: format seconds → SRT timestamp (HH:MM:SS,mmm)
+      const toSrtTime = (secs: number): string => {
+        const h = Math.floor(secs / 3600);
+        const m = Math.floor((secs % 3600) / 60);
+        const s = Math.floor(secs % 60);
+        const ms = Math.round((secs % 1) * 1000);
+        return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")},${String(ms).padStart(3, "0")}`;
+      };
+
+      // Helper: group words into caption lines (~5 words each)
+      const groupWords = (
+        words: { word: string; start: number; end: number }[],
+        wordsPerLine = 5,
+      ) => {
+        const lines = [];
+        for (let i = 0; i < words.length; i += wordsPerLine) {
+          const group = words.slice(i, i + wordsPerLine);
+          lines.push({
+            text: group.map((w) => w.word).join(" "),
+            start: group[0].start,
+            end: group[group.length - 1].end,
+          });
+        }
+        return lines;
+      };
+
+      const sceneTranscriptions: {
+        order: number;
+        words: { word: string; start: number; end: number }[];
+        srt: string;
+      }[] = [];
+
+      let globalSrtIndex = 1;
+      let globalTimeOffset = 0; // accumulate time across scenes for the full SRT
+
+      for (const sceneAudio of voiceAudio.sceneAudios.sort(
+        (a, b) => a.order - b.order,
+      )) {
+        const { result, error } = await dg.listen.prerecorded.transcribeUrl(
+          { url: sceneAudio.audioUrl },
+          {
+            model: "nova-3",
+            smart_format: true,
+            language: dgLang,
+            punctuate: true,
+            words: true, // ← word-level timestamps
+          },
+        );
+
+        if (error)
+          throw new Error(
+            `Deepgram error on scene ${sceneAudio.order}: ${error.message}`,
+          );
+
+        const words =
+          result?.results?.channels?.[0]?.alternatives?.[0]?.words?.map(
+            (w) => ({
+              word: w.word ?? "",
+              start: w.start ?? 0,
+              end: w.end ?? 0,
+            }),
+          ) ?? [];
+
+        // Build per-scene SRT (times are scene-relative)
+        const sceneCaptionLines = groupWords(words);
+        let sceneSrt = "";
+        let localIdx = 1;
+        for (const line of sceneCaptionLines) {
+          sceneSrt += `${localIdx}\n${toSrtTime(line.start)} --> ${toSrtTime(line.end)}\n${line.text}\n\n`;
+          localIdx++;
+        }
+
+        // Build global SRT (times shifted by cumulative offset)
+        const sceneDuration =
+          result?.results?.channels?.[0]?.alternatives?.[0]?.words?.slice(-1)[0]
+            ?.end ?? 0;
+
+        for (const line of sceneCaptionLines) {
+          const srtBlock = `${globalSrtIndex}\n${toSrtTime(line.start + globalTimeOffset)} --> ${toSrtTime(line.end + globalTimeOffset)}\n${line.text}\n\n`;
+          sceneTranscriptions.push({
+            order: sceneAudio.order,
+            words,
+            srt: sceneSrt,
+          });
+          globalSrtIndex++;
+          // Note: global SRT is built separately below
+          void srtBlock; // we accumulate below
+        }
+
+        globalTimeOffset += sceneDuration;
+
+        sceneTranscriptions.push({
+          order: sceneAudio.order,
+          words,
+          srt: sceneSrt,
+        });
+      }
+
+      // Deduplicate (we pushed twice above for the global index loop — fix)
+      const uniqueScenes = sceneTranscriptions.filter(
+        (s, idx, arr) => arr.findIndex((x) => x.order === s.order) === idx,
       );
+
+      // Build a single merged SRT from all scenes with time offsets
+      let mergedSrt = "";
+      let srtIdx = 1;
+      let timeOffset = 0;
+      for (const scene of uniqueScenes.sort((a, b) => a.order - b.order)) {
+        const captionLines = groupWords(scene.words);
+        for (const line of captionLines) {
+          mergedSrt += `${srtIdx}\n${toSrtTime(line.start + timeOffset)} --> ${toSrtTime(line.end + timeOffset)}\n${line.text}\n\n`;
+          srtIdx++;
+        }
+        const lastWord = scene.words[scene.words.length - 1];
+        timeOffset += lastWord?.end ?? 0;
+      }
+
       return {
-        srtContent:
-          "1\n00:00:00,000 --> 00:00:05,000\nPlaceholder caption text",
-        words: [],
+        scenes: uniqueScenes,
+        mergedSrt: mergedSrt.trim(),
       };
     });
 
     // ─────────────────────────────────────────────────────────────
-    // STEP 5: Generate Images from AI prompts
+    // STEP 5: Generate Images using HuggingFace FLUX.1-schnell (free)
+    // Free with a free HF account token — no credit card needed.
+    // 300 requests/hour on free tier.
     // ─────────────────────────────────────────────────────────────
     const images = await step.run("generate-images", async () => {
-      // TODO: Call image generation API (e.g. Stable Diffusion / Flux) for each scene
-      console.log(`[placeholder] Generating ${script.scenes.length} images`);
-      return script.scenes.map((scene, i) => ({
-        order: scene.order,
-        prompt: scene.imagePrompt,
-        imageUrl: `https://placeholder.image/frame-${i + 1}.jpg`,
-      }));
+      const hfToken = process.env.HF_TOKEN;
+      if (!hfToken) throw new Error("Missing HF_TOKEN environment variable");
+
+      // FLUX.1-schnell: 12B param model, fast (1-4 steps), high quality
+      const HF_MODEL_URL =
+        "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell";
+
+      const sceneImages: { order: number; prompt: string; imageUrl: string }[] =
+        [];
+
+      for (const scene of script.scenes.sort((a, b) => a.order - b.order)) {
+        // HF Inference API: POST with JSON body, returns raw image bytes
+        const imgRes = await fetch(HF_MODEL_URL, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${hfToken}`,
+            "Content-Type": "application/json",
+            "x-wait-for-model": "true", // wait if model is loading
+          },
+          body: JSON.stringify({
+            inputs: scene.imagePrompt,
+            parameters: {
+              width: 1024,
+              height: 576, // 16:9 for video
+              num_inference_steps: 4,
+              guidance_scale: 0, // FLUX.1-schnell uses 0 guidance
+            },
+          }),
+        });
+
+        if (!imgRes.ok) {
+          const errText = await imgRes.text();
+          throw new Error(
+            `HuggingFace image generation failed for scene ${scene.order} (${imgRes.status}): ${errText.slice(0, 200)}`,
+          );
+        }
+
+        const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
+
+        // Upload to Supabase Storage
+        const filePath = `videos/${userId}/series-${seriesId}/images/scene-${scene.order}.jpg`;
+        const { error: uploadError } = await supabaseAdmin.storage
+          .from("vidgen-assets")
+          .upload(filePath, imgBuffer, {
+            contentType: "image/jpeg",
+            upsert: true,
+          });
+
+        if (uploadError) {
+          throw new Error(
+            `Failed to upload image for scene ${scene.order}: ${uploadError.message}`,
+          );
+        }
+
+        const { data: urlData } = supabaseAdmin.storage
+          .from("vidgen-assets")
+          .getPublicUrl(filePath);
+
+        sceneImages.push({
+          order: scene.order,
+          prompt: scene.imagePrompt,
+          imageUrl: urlData.publicUrl,
+        });
+      }
+
+      return sceneImages;
     });
 
     // ─────────────────────────────────────────────────────────────
-    // STEP 6: Save everything to database
+    // STEP 6: Save all generated assets to Supabase
     // ─────────────────────────────────────────────────────────────
     const savedVideo = await step.run("save-to-database", async () => {
-      // TODO: Save the completed video record to Supabase `videos` table
-      console.log(
-        `[placeholder] Saving video for series ${seriesId} to database`,
-      );
       const { data, error } = await supabaseAdmin
         .from("videos")
         .insert({
@@ -239,18 +415,16 @@ Required JSON format:
           user_id: userId,
           title: script.title,
           script: voiceAudio.fullScript,
-          audio_urls: voiceAudio.sceneAudios,
-          captions: captions.srtContent,
-          images: images.map((img) => img.imageUrl),
+          audio_urls: voiceAudio.sceneAudios, // [{ order, audioUrl }]
+          captions_srt: captions.mergedSrt, // full SRT string
+          captions_scenes: captions.scenes, // [{ order, srt, words[] }]
+          images, // [{ order, prompt, imageUrl }]
           status: "completed",
         })
         .select()
         .single();
 
-      if (error) {
-        throw new Error(`Failed to save video: ${error.message}`);
-      }
-
+      if (error) throw new Error(`Failed to save video: ${error.message}`);
       return data;
     });
 

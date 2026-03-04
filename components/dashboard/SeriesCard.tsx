@@ -57,11 +57,12 @@ export function SeriesCard({ series }: { series: Series }) {
 
       if (!res.ok) throw new Error("Failed to start video generation");
 
-      toast.success("Video generation started! Check back soon.");
+      toast.success("Video generation started!");
+      // Navigate to videos page so user can see the generating card
+      router.push("/dashboard/videos");
     } catch (error) {
       console.error("Error triggering video generation:", error);
       toast.error("Failed to start video generation");
-    } finally {
       setIsGenerating(false);
     }
   };

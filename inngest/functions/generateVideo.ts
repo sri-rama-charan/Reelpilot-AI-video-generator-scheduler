@@ -8,6 +8,7 @@ export type GenerateVideoEvent = {
   data: {
     seriesId: number;
     userId: string;
+    videoId?: number; // pre-created row ID from the generate API route
   };
 };
 
@@ -20,7 +21,7 @@ export const generateVideo = inngest.createFunction(
   },
   { event: "video/generate" },
   async ({ event, step }) => {
-    const { seriesId, userId } = event.data;
+    const { seriesId, userId, videoId } = event.data;
 
     // Guard: ensure required event data is present
     if (!seriesId || !userId) {
@@ -406,26 +407,40 @@ Required JSON format:
 
     // ─────────────────────────────────────────────────────────────
     // STEP 6: Save all generated assets to Supabase
+    // UPDATE the pre-created row instead of inserting a new one
     // ─────────────────────────────────────────────────────────────
     const savedVideo = await step.run("save-to-database", async () => {
-      const { data, error } = await supabaseAdmin
-        .from("videos")
-        .insert({
-          series_id: seriesId,
-          user_id: userId,
-          title: script.title,
-          script: voiceAudio.fullScript,
-          audio_urls: voiceAudio.sceneAudios, // [{ order, audioUrl }]
-          captions_srt: captions.mergedSrt, // full SRT string
-          captions_scenes: captions.scenes, // [{ order, srt, words[] }]
-          images, // [{ order, prompt, imageUrl }]
-          status: "completed",
-        })
-        .select()
-        .single();
+      const payload = {
+        title: script.title,
+        script: voiceAudio.fullScript,
+        audio_urls: voiceAudio.sceneAudios, // [{ order, audioUrl }]
+        captions_srt: captions.mergedSrt, // full SRT string
+        captions_scenes: captions.scenes, // [{ order, srt, words[] }]
+        images, // [{ order, prompt, imageUrl }]
+        tts_provider: voiceAudio.provider,
+        status: "completed",
+      };
 
-      if (error) throw new Error(`Failed to save video: ${error.message}`);
-      return data;
+      if (videoId) {
+        // Update the pre-created row
+        const { data, error } = await supabaseAdmin
+          .from("videos")
+          .update(payload)
+          .eq("id", videoId)
+          .select()
+          .single();
+        if (error) throw new Error(`Failed to update video: ${error.message}`);
+        return data;
+      } else {
+        // Fallback: insert a new row (triggered manually without pre-created row)
+        const { data, error } = await supabaseAdmin
+          .from("videos")
+          .insert({ series_id: seriesId, user_id: userId, ...payload })
+          .select()
+          .single();
+        if (error) throw new Error(`Failed to insert video: ${error.message}`);
+        return data;
+      }
     });
 
     return {

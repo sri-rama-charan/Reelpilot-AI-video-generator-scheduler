@@ -50,7 +50,7 @@ export function Sidebar() {
 
       <div className="px-4 pb-4">
         <Link
-          href="/dashboard/series/new"
+          href="/dashboard/create"
           className="flex items-center justify-center gap-2 w-full py-2.5 px-4 bg-white text-black hover:bg-gray-200 rounded-lg font-medium transition-colors"
         >
           <Plus className="w-5 h-5" />

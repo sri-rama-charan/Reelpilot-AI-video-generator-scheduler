@@ -48,6 +48,10 @@ CREATE TABLE IF NOT EXISTS videos (
   -- Shape: [{ order: number, prompt: string, imageUrl: string }]
   images           JSONB          NOT NULL DEFAULT '[]'::jsonb,
 
+  -- ── STEP 7 output (rendered video) ──────────────────────────────────────
+  -- Final MP4 public URL in Supabase Storage (set after Remotion renders)
+  video_url        TEXT,
+
   -- ── Generation status ────────────────────────────────────────────────────
   -- pending | generating | completed | failed
   status           TEXT           NOT NULL DEFAULT 'pending',
@@ -59,6 +63,10 @@ CREATE TABLE IF NOT EXISTS videos (
   created_at       TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
   updated_at       TIMESTAMPTZ    NOT NULL DEFAULT NOW()
 );
+
+-- ⚠️  If the videos table ALREADY EXISTS, run this line separately:
+ALTER TABLE IF EXISTS videos ADD COLUMN IF NOT EXISTS video_url TEXT;
+
 
 
 -- ─────────────────────────────────────────────────────────────────────────────

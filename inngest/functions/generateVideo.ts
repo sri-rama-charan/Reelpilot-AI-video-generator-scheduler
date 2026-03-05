@@ -16,9 +16,29 @@ export const generateVideo = inngest.createFunction(
   {
     id: "generate-video",
     name: "Generate Video",
-    // Limit concurrency so we don't overwhelm external APIs
     concurrency: { limit: 5 },
+    onFailure: async ({ error, event }) => {
+      // In Inngest onFailure, the original event is nested:
+      // event.data.event.data contains the original trigger payload
+      const originalData = (
+        event.data as unknown as {
+          event: { data: { videoId?: number } };
+        }
+      ).event?.data;
+
+      const failedVideoId = originalData?.videoId;
+      if (failedVideoId) {
+        await supabaseAdmin
+          .from("videos")
+          .update({
+            status: "failed",
+            error_message: error.message?.slice(0, 500) ?? "Generation failed",
+          })
+          .eq("id", failedVideoId);
+      }
+    },
   },
+
   { event: "video/generate" },
   async ({ event, step }) => {
     const { seriesId, userId, videoId } = event.data;
@@ -53,85 +73,151 @@ export const generateVideo = inngest.createFunction(
     // STEP 2: Generate Video Script using Gemini AI
     // ─────────────────────────────────────────────────────────────
     const script = await step.run("generate-script", async () => {
-      const durationSec = parseInt(series.duration, 10) || 60;
-      // Scale image count to video length
-      const imageCount = durationSec <= 45 ? 4 : durationSec <= 70 ? 5 : 6;
+      // Parse duration boundaries from string like "30-50" -> min:30, max:50
+      let minDurationSec = 30;
+      let maxDurationSec = 45;
+      const durationMatch = series.duration?.match(/\d+/g);
+      if (durationMatch) {
+        if (durationMatch.length === 1) {
+          minDurationSec = Math.max(15, Number(durationMatch[0]) - 10);
+          maxDurationSec = Number(durationMatch[0]);
+        } else if (durationMatch.length >= 2) {
+          minDurationSec = Number(durationMatch[0]);
+          maxDurationSec = Number(durationMatch[1]);
+        }
+      }
+
+      // Determine dynamic scene count depending on duration and topic complexity
+      const minScenes = Math.max(3, Math.floor(minDurationSec / 10));
+      const maxScenes = Math.max(minScenes + 1, Math.floor(maxDurationSec / 6));
+
+      // Unique run ID so Groq doesn't return a cached/identical response
+      const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+      // Calculate target word count
+      const minTotalWords = Math.floor(minDurationSec * 2.5); // ~150 wpm
+      const maxTotalWords = Math.floor(maxDurationSec * 2.5);
 
       const prompt = `
-You are an expert short-form video scriptwriter. Create a video script based on the details below.
+You are an expert short-form video scriptwriter. Create a highly engaging and informative video script based on the details below.
 
 Video Details:
 - Niche/Topic: ${series.niche}
 - Language: ${series.language}
 - Video Style: ${series.video_style}
-- Duration: approximately ${durationSec} seconds
+- Target Duration: Between ${minDurationSec} and ${maxDurationSec} seconds
+- Run ID: ${runId} (use this to ensure unique output)
 
-Instructions:
-- Divide the video into exactly ${imageCount} scenes.
-- For each scene, write a short natural voiceover line (2-3 sentences) that sounds great when spoken aloud.
-- Together, all scene voiceovers should form a complete, engaging ${durationSec}-second script when read at a normal speaking pace.
-- For each scene, also generate a detailed image prompt matching the "${series.video_style}" visual style (include lighting, mood, composition, subject).
-- IMPORTANT: Voiceovers must flow naturally from one scene to the next — no bullet points, no lists.
+Content & Length Instructions:
+1. FULL COVERAGE: Do not cut the topic short. Provide all necessary information to fully satisfy the viewer's curiosity.
+2. WORD COUNT (CRITICAL): To guarantee a length of ${minDurationSec}-${maxDurationSec} seconds, your total combined voiceover MUST be between ${minTotalWords} and ${maxTotalWords} words. (Do NOT generate scripts shorter than ${minTotalWords} words!).
+3. DYNAMIC SCENES: Divide the script into however many scenes the topic requires to flow well, but choose a number between ${minScenes} and ${maxScenes} scenes.
+4. PACING (CRITICAL): Each scene's voiceover MUST be at least 25 words long. Do not write short 1-sentence scenes. This forces the images to stay on screen for a comfortable duration.
+5. UNIQUENESS: The angle, hook, and delivery must be completely new.
 
-IMPORTANT: Respond ONLY with valid JSON. No markdown, no code fences, no explanation text.
+Output Requirements:
+- Each scene must have an "order" (1, 2, 3...), a "voiceover", and an "imagePrompt".
+- Each image prompt must describe a DISTINCT, VISUALLY DIFFERENT scene.
+
+IMPORTANT: Respond ONLY with valid JSON. No markdown, no code fences.
 
 Required JSON format:
 {
-  "title": "Short catchy video title (max 60 chars)",
+  "title": "Short catchy title",
   "scenes": [
     {
       "order": 1,
-      "voiceover": "Natural spoken script for this scene (2-3 sentences)",
-      "imagePrompt": "Detailed image generation prompt for scene 1 in ${series.video_style} style"
+      "voiceover": "Write a long, detailed paragraph here containing at least 25 words answering the topic. It must be detailed enough to keep the viewer engaged for several seconds...",
+      "imagePrompt": "Detailed visual description..."
     }
   ]
 }
 `.trim();
 
-      const response = await groq.chat.completions.create({
-        model: "llama-3.3-70b-versatile",
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are an expert short-form video scriptwriter. Always respond with valid JSON only. No markdown, no explanation, just raw JSON.",
-          },
-          { role: "user", content: prompt },
-        ],
-        temperature: 0.8,
-        response_format: { type: "json_object" },
-      });
-
-      const rawText = response.choices[0]?.message?.content ?? "";
-
       let parsed: {
         title: string;
         scenes: { order: number; voiceover: string; imagePrompt: string }[];
-      };
+      } | null = null;
+      let lastError = "";
 
-      try {
-        parsed = JSON.parse(rawText);
-      } catch {
-        throw new Error(`Groq returned invalid JSON: ${rawText.slice(0, 300)}`);
-      }
+      // Retry loop to enforce strict word count minimums
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          const response = await groq.chat.completions.create({
+            model: "llama-3.3-70b-versatile",
+            messages: [
+              {
+                role: "system",
+                content:
+                  "You are an expert short-form video scriptwriter. Always respond with valid JSON only. Keep voiceovers highly detailed to hit the exact word count requested.",
+              },
+              { role: "user", content: prompt },
+            ],
+            temperature: 0.7, // Lower temperature to improve instruction following (word counts)
+            response_format: { type: "json_object" },
+          });
 
-      if (
-        !parsed.title ||
-        !Array.isArray(parsed.scenes) ||
-        parsed.scenes.length === 0
-      ) {
-        throw new Error(
-          "Groq response missing required fields (title, scenes)",
-        );
-      }
+          const rawText = response.choices[0]?.message?.content ?? "";
+          let tempParsed;
+          try {
+            tempParsed = JSON.parse(rawText);
+          } catch {
+            throw new Error(
+              `Groq returned invalid JSON: ${rawText.slice(0, 300)}`,
+            );
+          }
 
-      // Validate each scene has required fields
-      for (const scene of parsed.scenes) {
-        if (!scene.voiceover || !scene.imagePrompt) {
-          throw new Error(
-            `Scene ${scene.order} is missing voiceover or imagePrompt`,
+          if (
+            !tempParsed.title ||
+            !Array.isArray(tempParsed.scenes) ||
+            tempParsed.scenes.length === 0
+          ) {
+            throw new Error(
+              "Groq response missing required fields (title, scenes)",
+            );
+          }
+
+          // Validate required fields
+          for (const scene of tempParsed.scenes) {
+            if (!scene.voiceover || !scene.imagePrompt) {
+              throw new Error(
+                `Scene ${scene.order} is missing voiceover or imagePrompt`,
+              );
+            }
+          }
+
+          // Validate strict word count
+          const totalGeneratedWords = tempParsed.scenes.reduce(
+            (acc: number, s: any) =>
+              acc + (s.voiceover.split(/\s+/).length || 0),
+            0,
           );
+
+          if (totalGeneratedWords < minTotalWords) {
+            lastError = `Generated script was too short (${totalGeneratedWords} words) vs minimum required (${minTotalWords} words).`;
+            if (attempt < 3) {
+              console.log(
+                `[step-2] Attempt ${attempt}: Word count too low (${totalGeneratedWords} < ${minTotalWords}). Retrying...`,
+              );
+              continue; // Retry
+            } else {
+              throw new Error(lastError); // Explode on 3rd attempt
+            }
+          }
+
+          parsed = tempParsed;
+          break; // Success
+        } catch (e: any) {
+          console.error(`[step-2] Attempt ${attempt} failed: ${e.message}`);
+          lastError = e.message;
+          if (attempt === 3) throw e;
         }
+      }
+
+      if (!parsed) {
+        throw new Error(
+          `Failed to generate valid script after 3 attempts. Last error: ${lastError}`,
+        );
       }
 
       return parsed;
@@ -363,6 +449,8 @@ Required JSON format:
               height: 576, // 16:9 for video
               num_inference_steps: 4,
               guidance_scale: 0, // FLUX.1-schnell uses 0 guidance
+              // Random seed per scene = different image each generation run
+              seed: Math.floor(Math.random() * 2147483647),
             },
           }),
         });
@@ -443,10 +531,145 @@ Required JSON format:
       }
     });
 
+    // ─────────────────────────────────────────────────────────────
+    // STEP 7: Render final MP4 using Remotion
+    // Runs inside the Inngest worker — no AWS needed.
+    // Uses @remotion/renderer which bundles its own FFmpeg.
+    // ─────────────────────────────────────────────────────────────
+    const renderResult = await step.run("render-video", async () => {
+      const { bundle } = await import("@remotion/bundler");
+      const { renderMedia, selectComposition } =
+        await import("@remotion/renderer");
+      const path = await import("path");
+      const os = await import("os");
+      const fs = await import("fs");
+
+      // The final video ID (pre-created or just inserted)
+      const finalVideoId = videoId ?? savedVideo?.id;
+      if (!finalVideoId) throw new Error("No video ID to attach render to");
+
+      // --- 1. Build scene input props from previous steps ---
+      const sceneInputs = script.scenes
+        .sort((a, b) => a.order - b.order)
+        .map((scene) => {
+          const audioEntry = voiceAudio.sceneAudios.find(
+            (a) => a.order === scene.order,
+          );
+          const captionEntry = captions.scenes.find(
+            (c: { order: number }) => c.order === scene.order,
+          );
+          const imageEntry = images.find((img) => img.order === scene.order);
+
+          return {
+            order: scene.order,
+            imageUrl: imageEntry?.imageUrl ?? "",
+            audioUrl: audioEntry?.audioUrl ?? "",
+            words: captionEntry?.words ?? [],
+          };
+        });
+
+      // --- 2. Bundle the Remotion composition ---
+      const entryPoint = path.default.resolve(
+        process.cwd(),
+        "remotion/src/Root.tsx",
+      );
+      console.log("[step-7] Bundling Remotion composition...");
+      const bundleLocation = await bundle({
+        entryPoint,
+        webpackOverride: (config) => config,
+      });
+
+      // --- 3. Resolve composition with actual input props ---
+      // Resolve background music URL from series.background_music array
+      const { BACKGROUND_MUSIC } = await import("@/lib/constants/music");
+      const musicId = Array.isArray(series.background_music)
+        ? series.background_music[0]
+        : series.background_music;
+      const musicEntry = BACKGROUND_MUSIC.find((m) => m.id === musicId);
+      const backgroundMusicUrl = musicEntry?.url ?? "";
+
+      // The cap is used purely as a safety mechanism, real duration driven by audio length
+      let maxDurationSec = 45;
+      const durationMatch = series.duration?.match(/\d+/g);
+      if (durationMatch) {
+        maxDurationSec = Math.max(...durationMatch.map(Number));
+      }
+
+      // Add a 5 second leeway to the hard cap so it doesn't arbitrarily cut off late scenes
+      const totalDurationInFrames = (maxDurationSec + 5) * 30; // hard cap
+
+      const inputProps = {
+        scenes: sceneInputs,
+        captionStyle: series.caption_style ?? "style-1",
+        fps: 30,
+        backgroundMusicUrl,
+        totalDurationInFrames,
+      };
+
+      const composition = await selectComposition({
+        serveUrl: bundleLocation,
+        id: "VideoComposition",
+        inputProps,
+      });
+
+      // --- 4. Render to a temp file ---
+      const tmpDir = os.default.tmpdir();
+      const outputPath = path.default.join(
+        tmpDir,
+        `vidgen-${finalVideoId}-${Date.now()}.mp4`,
+      );
+
+      console.log(`[step-7] Rendering to ${outputPath}...`);
+      await renderMedia({
+        composition,
+        serveUrl: bundleLocation,
+        codec: "h264",
+        outputLocation: outputPath,
+        inputProps,
+        onProgress: ({ progress }) => {
+          console.log(
+            `[step-7] Render progress: ${Math.round(progress * 100)}%`,
+          );
+        },
+      });
+
+      // --- 5. Upload MP4 to Supabase Storage ---
+      const fileBuffer = fs.default.readFileSync(outputPath);
+      const storagePath = `videos/${userId}/series-${seriesId}/final-${finalVideoId}.mp4`;
+
+      const { error: uploadError } = await supabaseAdmin.storage
+        .from("vidgen-assets")
+        .upload(storagePath, fileBuffer, {
+          contentType: "video/mp4",
+          upsert: true,
+        });
+
+      // Clean up temp file
+      fs.default.unlinkSync(outputPath);
+
+      if (uploadError) {
+        throw new Error(`Failed to upload video: ${uploadError.message}`);
+      }
+
+      const { data: urlData } = supabaseAdmin.storage
+        .from("vidgen-assets")
+        .getPublicUrl(storagePath);
+
+      // --- 6. Save video_url back to the videos row ---
+      await supabaseAdmin
+        .from("videos")
+        .update({ video_url: urlData.publicUrl, status: "completed" })
+        .eq("id", finalVideoId);
+
+      console.log(`[step-7] Video rendered and saved: ${urlData.publicUrl}`);
+      return { videoUrl: urlData.publicUrl };
+    });
+
     return {
       success: true,
       seriesId,
       videoId: savedVideo?.id,
+      videoUrl: renderResult.videoUrl,
     };
   },
 );

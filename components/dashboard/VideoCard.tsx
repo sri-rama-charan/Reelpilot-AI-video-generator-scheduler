@@ -8,8 +8,16 @@ import {
   XCircle,
   Clock,
   Music,
+  PlayCircle,
+  Download,
 } from "lucide-react";
 import Image from "next/image";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 interface Video {
   id: number;
@@ -19,6 +27,7 @@ interface Video {
   images: { order: number; prompt: string; imageUrl: string }[] | null;
   audio_urls: { order: number; audioUrl: string }[] | null;
   captions_srt: string | null;
+  video_url: string | null;
   status: "pending" | "generating" | "completed" | "failed";
   error_message: string | null;
   created_at: string;
@@ -54,9 +63,10 @@ export function VideoCard({ video }: { video: Video }) {
   const StatusIcon = statusCfg.icon;
   const sceneCount = video.images?.length ?? 0;
   const hasAudio = (video.audio_urls?.length ?? 0) > 0;
+  const isPlayable = video.status === "completed" && !!video.video_url;
 
-  return (
-    <div className="group relative rounded-2xl overflow-hidden border border-white/10 bg-white/5 backdrop-blur-sm hover:border-white/20 hover:bg-white/8 transition-all duration-300">
+  const cardContent = (
+    <div className="group relative rounded-2xl overflow-hidden border border-white/10 bg-white/5 backdrop-blur-sm hover:border-white/20 hover:bg-white/8 transition-all duration-300 w-full text-left h-full flex flex-col cursor-pointer">
       {/* Thumbnail */}
       <div className="relative w-full aspect-video bg-white/5 overflow-hidden">
         {thumbnail ? (
@@ -79,6 +89,13 @@ export function VideoCard({ video }: { video: Video }) {
                 <span className="text-xs">No preview</span>
               </>
             )}
+          </div>
+        )}
+
+        {/* Play overlay on hover if playable */}
+        {isPlayable && (
+          <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+            <PlayCircle className="w-12 h-12 text-white drop-shadow-md" />
           </div>
         )}
 
@@ -149,4 +166,45 @@ export function VideoCard({ video }: { video: Video }) {
       </div>
     </div>
   );
+
+  if (isPlayable) {
+    return (
+      <Dialog>
+        <DialogTrigger asChild>
+          <button className="focus:outline-none">{cardContent}</button>
+        </DialogTrigger>
+        <DialogContent className="max-w-4xl p-0 overflow-hidden bg-black/95 border-white/10">
+          <DialogTitle className="sr-only">
+            {video.title ?? "Video Player"}
+          </DialogTitle>
+          {video.video_url && (
+            <div className="relative">
+              <video
+                controls
+                autoPlay
+                src={video.video_url}
+                className="w-full h-auto max-h-[85vh] object-contain bg-black"
+              />
+              <div className="absolute top-4 right-4 z-50">
+                <a
+                  href={video.video_url}
+                  download={`video-${video.id}.mp4`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-3 py-1.5 bg-black/60 hover:bg-black/80 text-white rounded-lg backdrop-blur-sm transition-colors text-sm font-medium border border-white/20"
+                  title="Download Video"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Download</span>
+                </a>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  return cardContent;
 }

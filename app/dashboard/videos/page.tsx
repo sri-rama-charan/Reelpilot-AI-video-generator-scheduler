@@ -12,6 +12,7 @@ interface Video {
   images: { order: number; prompt: string; imageUrl: string }[] | null;
   audio_urls: { order: number; audioUrl: string }[] | null;
   captions_srt: string | null;
+  video_url: string | null;
   status: "pending" | "generating" | "completed" | "failed";
   error_message: string | null;
   created_at: string;

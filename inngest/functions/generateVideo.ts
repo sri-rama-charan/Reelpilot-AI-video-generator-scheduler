@@ -51,6 +51,8 @@ export const generateVideo = inngest.createFunction(
       );
     }
 
+    const runPrefix = videoId ? `video-${videoId}` : `run-${Date.now()}`;
+
     // ─────────────────────────────────────────────────────────────
     // STEP 1: Fetch Series data from Supabase
     // ─────────────────────────────────────────────────────────────
@@ -188,7 +190,7 @@ Required JSON format:
 
           // Validate strict word count
           const totalGeneratedWords = tempParsed.scenes.reduce(
-            (acc: number, s: any) =>
+            (acc: number, s: { voiceover: string }) =>
               acc + (s.voiceover.split(/\s+/).length || 0),
             0,
           );
@@ -207,9 +209,10 @@ Required JSON format:
 
           parsed = tempParsed;
           break; // Success
-        } catch (e: any) {
-          console.error(`[step-2] Attempt ${attempt} failed: ${e.message}`);
-          lastError = e.message;
+        } catch (e: unknown) {
+          const errMsg = e instanceof Error ? e.message : String(e);
+          console.error(`[step-2] Attempt ${attempt} failed: ${errMsg}`);
+          lastError = errMsg;
           if (attempt === 3) throw e;
         }
       }
@@ -253,7 +256,7 @@ Required JSON format:
         }
 
         // Upload each scene's audio to Supabase Storage
-        const filePath = `videos/${userId}/series-${seriesId}/audio/scene-${scene.order}.mp3`;
+        const filePath = `videos/${userId}/series-${seriesId}/${runPrefix}/audio/scene-${scene.order}.mp3`;
         const { error: uploadError } = await supabaseAdmin.storage
           .from("vidgen-assets")
           .upload(filePath, audioBuffer, {
@@ -465,7 +468,7 @@ Required JSON format:
         const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
 
         // Upload to Supabase Storage
-        const filePath = `videos/${userId}/series-${seriesId}/images/scene-${scene.order}.jpg`;
+        const filePath = `videos/${userId}/series-${seriesId}/${runPrefix}/images/scene-${scene.order}.jpg`;
         const { error: uploadError } = await supabaseAdmin.storage
           .from("vidgen-assets")
           .upload(filePath, imgBuffer, {
@@ -663,6 +666,76 @@ Required JSON format:
 
       console.log(`[step-7] Video rendered and saved: ${urlData.publicUrl}`);
       return { videoUrl: urlData.publicUrl };
+    });
+
+    // ─────────────────────────────────────────────────────────────
+    // STEP 8: Send Email Notification via Plunk
+    // ─────────────────────────────────────────────────────────────
+    await step.run("send-email-notification", async () => {
+      // Fetch user email
+      const { data: userData } = await supabaseAdmin
+        .from("users")
+        .select("email, name")
+        .eq("user_id", userId)
+        .single();
+
+      if (!userData?.email) {
+        console.warn(
+          `[step-8] No email found for user ${userId}, skipping notification.`,
+        );
+        return;
+      }
+
+      const plunkKey = process.env.PLUNK_API_KEY;
+      if (!plunkKey) {
+        console.warn(
+          "[step-8] PLUNK_API_KEY is not set, skipping email notification.",
+        );
+        return;
+      }
+
+      const Plunk = (await import("@plunk/node")).default;
+      const plunk = new Plunk(plunkKey);
+
+      const videoTitle = script.title || "Your New Video";
+      const thumbUrl = images[0]?.imageUrl || "";
+      const downloadUrl = renderResult.videoUrl;
+      const watchUrl = process.env.NEXT_PUBLIC_APP_URL
+        ? `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/videos`
+        : downloadUrl;
+
+      const htmlBody = `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9fafb; border-radius: 12px;">
+          <h2 style="color: #111827; text-align: center;">Your Video is Ready! 🎉</h2>
+          <p style="color: #374151; font-size: 16px;">
+            Hi ${userData.name || "Creator"},<br/><br/>
+            Your video <strong>"${videoTitle}"</strong> has finished generating successfully!
+          </p>
+          
+          <div style="background-color: white; border-radius: 8px; overflow: hidden; margin: 24px 0; border: 1px solid #e5e7eb;">
+            ${thumbUrl ? `<img src="${thumbUrl}" alt="Video Thumbnail" style="width: 100%; height: auto; display: block;" />` : ""}
+            <div style="padding: 16px; text-align: center;">
+              <a href="${watchUrl}" style="display: inline-block; background-color: #4f46e5; color: white; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: 500; font-size: 16px; margin: 8px;">View Video in Dashboard</a>
+              <a href="${downloadUrl}" style="display: inline-block; background-color: #111827; color: white; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: 500; font-size: 16px; margin: 8px;" download>Download MP4</a>
+            </div>
+          </div>
+          
+          <p style="color: #6b7280; font-size: 14px; text-align: center;">
+            You are receiving this email because you triggered a video generation on your account.
+          </p>
+        </div>
+      `;
+
+      try {
+        await plunk.emails.send({
+          to: userData.email,
+          subject: `Video Ready: ${videoTitle}`,
+          body: htmlBody,
+        });
+        console.log(`[step-8] Email notification sent to ${userData.email}`);
+      } catch (err: unknown) {
+        console.error(`[step-8] Failed to send email:`, err);
+      }
     });
 
     return {

@@ -1,0 +1,13 @@
+Last Video ID: 11
+Created At: 2026-03-05T10:19:17.933267+00:00
+Status: completed
+Script Length: 137 chars, ~24 words
+Scenes: 5
+Scene 1 audio length: 1.76s
+Scene 2 audio length: 1.92s
+Scene 3 audio length: 1.92s
+Scene 4 audio length: 1.36s
+Scene 5 audio length: 2.00s
+Total Audio Duration (raw sum): 8.96 seconds
+Script text:
+In a world full of possibilities lies a power within you waiting to be unleashed to drive you forward towards your dreams and aspirations

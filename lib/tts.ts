@@ -1,47 +1,34 @@
-import { createClient } from "@deepgram/sdk";
-
-if (!process.env.DEEPGRAM_API_KEY) {
-  throw new Error("Missing DEEPGRAM_API_KEY environment variable");
-}
-
-if (!process.env.FONADA_API_KEY) {
-  throw new Error("Missing FONADA_API_KEY environment variable");
-}
-
-const deepgram = createClient(process.env.DEEPGRAM_API_KEY);
-
 // ─────────────────────────────────────────────────────────────────────────────
-// Deepgram TTS
-// Docs: https://developers.deepgram.com/docs/text-to-speech
+// Deepgram TTS  (direct REST — no SDK to avoid fetch compatibility issues)
+// POST https://api.deepgram.com/v1/speak?model=<voice>
 // Returns: MP3 buffer
 // ─────────────────────────────────────────────────────────────────────────────
 export async function deepgramTTS(
   text: string,
   voiceModel: string,
 ): Promise<Buffer> {
-  const response = await deepgram.speak.request(
-    { text },
-    { model: voiceModel, encoding: "mp3" },
-  );
+  const apiKey = process.env.DEEPGRAM_API_KEY;
+  if (!apiKey) throw new Error("Missing DEEPGRAM_API_KEY");
 
-  const stream = await response.getStream();
-  if (!stream) throw new Error("Deepgram TTS returned no audio stream");
+  const url = `https://api.deepgram.com/v1/speak?model=${encodeURIComponent(voiceModel)}&encoding=mp3`;
 
-  const reader = stream.getReader();
-  const chunks: Uint8Array[] = [];
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Token ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ text }),
+  });
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(
+      `Deepgram TTS failed (${res.status}): ${err.slice(0, 200)}`,
+    );
   }
 
-  const dataArray = chunks.reduce(
-    (acc, chunk) => Uint8Array.from([...acc, ...chunk]),
-    new Uint8Array(0),
-  );
-
-  return Buffer.from(dataArray.buffer);
+  return Buffer.from(await res.arrayBuffer());
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -1,6 +1,4 @@
-import Link from "next/link";
 import { UserButton } from "@clerk/nextjs";
-import { Search } from "lucide-react";
 
 export function Header() {
   return (

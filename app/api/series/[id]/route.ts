@@ -20,7 +20,7 @@ export async function PATCH(
 
     const body = await req.json();
 
-    const updatePayload: Record<string, any> = {};
+    const updatePayload: Record<string, unknown> = {};
 
     if ("status" in body) {
       if (body.status !== "active" && body.status !== "paused") {

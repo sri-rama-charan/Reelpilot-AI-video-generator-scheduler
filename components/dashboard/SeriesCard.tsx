@@ -11,6 +11,7 @@ import {
   Clock,
   Video,
   Loader2,
+  Workflow,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import {
@@ -47,6 +48,7 @@ export function SeriesCard({ series }: { series: Series }) {
   const [status, setStatus] = useState(series.status || "active");
   const [isToggling, setIsToggling] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
 
   const generateVideo = async () => {
     try {
@@ -64,6 +66,24 @@ export function SeriesCard({ series }: { series: Series }) {
       console.error("Error triggering video generation:", error);
       toast.error("Failed to start video generation");
       setIsGenerating(false);
+    }
+  };
+
+  const testWorkflow = async () => {
+    try {
+      setIsTesting(true);
+      const res = await fetch(`/api/series/${series.id}/test-workflow`, {
+        method: "POST",
+      });
+
+      if (!res.ok) throw new Error("Failed to start test workflow");
+
+      toast.success("Scheduled workflow manually triggered!");
+    } catch (error) {
+      console.error("Error triggering test workflow:", error);
+      toast.error("Failed to start test workflow");
+    } finally {
+      setIsTesting(false);
     }
   };
 
@@ -239,6 +259,20 @@ export function SeriesCard({ series }: { series: Series }) {
               <Play className="w-4 h-4 mr-2 fill-current" />
             )}
             {isGenerating ? "Starting..." : "Generate New Video"}
+          </Button>
+
+          {/* Test Workflow Button */}
+          <Button
+            className="w-full bg-slate-800 hover:bg-slate-700 text-white border border-white/10 transition-all disabled:opacity-60"
+            onClick={testWorkflow}
+            disabled={isTesting}
+          >
+            {isTesting ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Workflow className="w-4 h-4 mr-2" />
+            )}
+            {isTesting ? "Executing..." : "Execute Workflow (Test)"}
           </Button>
         </div>
       </div>

@@ -421,51 +421,106 @@ Required JSON format:
     });
 
     // ─────────────────────────────────────────────────────────────
-    // STEP 5: Generate Images using HuggingFace FLUX.1-schnell (free)
-    // Free with a free HF account token — no credit card needed.
-    // 300 requests/hour on free tier.
+    // STEP 5: Generate Images using HuggingFace FLUX.1-schnell
+    // Supports multiple HF tokens with automatic fallback
     // ─────────────────────────────────────────────────────────────
     const images = await step.run("generate-images", async () => {
-      const hfToken = process.env.HF_TOKEN;
-      if (!hfToken) throw new Error("Missing HF_TOKEN environment variable");
+      // Collect all available HF tokens (new account first, then old)
+      const hfTokens = [
+        process.env.HF_TOKEN_NEW, // New account (try first)
+        process.env.HF_TOKEN,      // Old account (fallback)
+      ].filter(Boolean) as string[];
 
-      // FLUX.1-schnell: 12B param model, fast (1-4 steps), high quality
+      if (hfTokens.length === 0) {
+        throw new Error("No HF_TOKEN or HF_TOKEN_NEW configured");
+      }
+
+      console.log(`[step-5] Found ${hfTokens.length} HuggingFace token(s) to try`);
+
       const HF_MODEL_URL =
         "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell";
 
-      const sceneImages: { order: number; prompt: string; imageUrl: string }[] =
-        [];
+      const sceneImages: { order: number; prompt: string; imageUrl: string }[] = [];
 
       for (const scene of script.scenes.sort((a, b) => a.order - b.order)) {
-        // HF Inference API: POST with JSON body, returns raw image bytes
-        const imgRes = await fetch(HF_MODEL_URL, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${hfToken}`,
-            "Content-Type": "application/json",
-            "x-wait-for-model": "true", // wait if model is loading
-          },
-          body: JSON.stringify({
-            inputs: scene.imagePrompt,
-            parameters: {
-              width: 1024,
-              height: 576, // 16:9 for video
-              num_inference_steps: 4,
-              guidance_scale: 0, // FLUX.1-schnell uses 0 guidance
-              // Random seed per scene = different image each generation run
-              seed: Math.floor(Math.random() * 2147483647),
-            },
-          }),
-        });
+        console.log(`[step-5] Generating image for scene ${scene.order}...`);
 
-        if (!imgRes.ok) {
-          const errText = await imgRes.text();
-          throw new Error(
-            `HuggingFace image generation failed for scene ${scene.order} (${imgRes.status}): ${errText.slice(0, 200)}`,
-          );
+        let imgBuffer: Buffer | null = null;
+        let lastError: Error | null = null;
+
+        // Try each token in order until one works
+        for (let tokenIdx = 0; tokenIdx < hfTokens.length; tokenIdx++) {
+          const token = hfTokens[tokenIdx];
+          const tokenLabel = tokenIdx === 0 ? "NEW" : "OLD";
+
+          try {
+            console.log(`[step-5] Scene ${scene.order}: Trying HF token ${tokenLabel}...`);
+
+            const imgRes = await fetch(HF_MODEL_URL, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+                "x-wait-for-model": "true",
+              },
+              body: JSON.stringify({
+                inputs: scene.imagePrompt,
+                parameters: {
+                  width: 1024,
+                  height: 576,
+                  num_inference_steps: 4,
+                  guidance_scale: 0,
+                  seed: Math.floor(Math.random() * 2147483647),
+                },
+              }),
+            });
+
+            if (!imgRes.ok) {
+              const errText = await imgRes.text();
+              
+              // Check if it's a quota/credit error (402 or specific messages)
+              if (
+                imgRes.status === 402 ||
+                errText.includes("depleted") ||
+                errText.includes("quota") ||
+                errText.includes("rate limit")
+              ) {
+                console.warn(
+                  `[step-5] Token ${tokenLabel} quota exhausted (${imgRes.status}), trying next token...`
+                );
+                lastError = new Error(`Token ${tokenLabel}: ${errText.slice(0, 150)}`);
+                continue; // Try next token
+              }
+
+              // Other errors - throw immediately
+              throw new Error(
+                `HF image generation failed with token ${tokenLabel} (${imgRes.status}): ${errText.slice(0, 200)}`
+              );
+            }
+
+            imgBuffer = Buffer.from(await imgRes.arrayBuffer());
+
+            if (imgBuffer.length === 0) {
+              throw new Error("HuggingFace returned empty image buffer");
+            }
+
+            console.log(`[step-5] Scene ${scene.order}: SUCCESS with token ${tokenLabel}`);
+            break; // Success - exit token loop
+          } catch (err) {
+            lastError = err instanceof Error ? err : new Error(String(err));
+            console.error(`[step-5] Token ${tokenLabel} failed:`, lastError.message);
+            
+            // If this was NOT a quota error, don't try other tokens
+            if (!lastError.message.includes("quota") && !lastError.message.includes("depleted")) {
+              break;
+            }
+          }
         }
 
-        const imgBuffer = Buffer.from(await imgRes.arrayBuffer());
+        // All tokens failed
+        if (!imgBuffer) {
+          throw lastError || new Error(`Failed to generate image for scene ${scene.order} - all tokens exhausted`);
+        }
 
         // Upload to Supabase Storage
         const filePath = `videos/${userId}/series-${seriesId}/${runPrefix}/images/scene-${scene.order}.jpg`;
@@ -478,7 +533,7 @@ Required JSON format:
 
         if (uploadError) {
           throw new Error(
-            `Failed to upload image for scene ${scene.order}: ${uploadError.message}`,
+            `Failed to upload image for scene ${scene.order}: ${uploadError.message}`
           );
         }
 
@@ -491,6 +546,8 @@ Required JSON format:
           prompt: scene.imagePrompt,
           imageUrl: urlData.publicUrl,
         });
+
+        console.log(`[step-5] Scene ${scene.order} uploaded: ${urlData.publicUrl}`);
       }
 
       return sceneImages;
@@ -534,6 +591,12 @@ Required JSON format:
       }
     });
 
+    // Shared video ID used by render + email steps
+    const finalVideoId = videoId ?? savedVideo?.id;
+    if (!finalVideoId) {
+      throw new Error("No video ID available for render/email steps");
+    }
+
     // ─────────────────────────────────────────────────────────────
     // STEP 7: Render final MP4 using Remotion
     // Runs inside the Inngest worker — no AWS needed.
@@ -546,10 +609,6 @@ Required JSON format:
       const path = await import("path");
       const os = await import("os");
       const fs = await import("fs");
-
-      // The final video ID (pre-created or just inserted)
-      const finalVideoId = videoId ?? savedVideo?.id;
-      if (!finalVideoId) throw new Error("No video ID to attach render to");
 
       // --- 1. Build scene input props from previous steps ---
       const sceneInputs = script.scenes
@@ -669,79 +728,194 @@ Required JSON format:
     });
 
     // ─────────────────────────────────────────────────────────────
-    // STEP 8: Send Email Notification via Plunk
+    // STEP 8: Send Email Notification via Resend
+    // Non-blocking: video is already completed, email failures don't fail the job
     // ─────────────────────────────────────────────────────────────
-    await step.run("send-email-notification", async () => {
-      // Fetch user email
-      const { data: userData } = await supabaseAdmin
+    const emailResult = await step.run("send-email-notification", async () => {
+      console.log(`[step-8] Starting email notification for user ${userId}`);
+
+      const rawResendKey = process.env.RESEND_API_KEY ?? "";
+      const resendKey = rawResendKey
+        .replace(/\s+/g, "")
+        .replace(/[\u200B-\u200D\uFEFF]/g, "")
+        .replace(/^['"]|['"]$/g, "");
+
+      if (!resendKey) {
+        console.error("[step-8] CRITICAL: RESEND_API_KEY not set!");
+        return {
+          success: false,
+          reason: "RESEND_API_KEY environment variable not configured",
+          severity: "critical",
+        };
+      }
+
+      if (!resendKey.startsWith("re_")) {
+        return {
+          success: false,
+          reason: "RESEND_API_KEY has invalid format. Expected key starting with re_...",
+          severity: "critical",
+        };
+      }
+
+      const { data: userData, error: userError } = await supabaseAdmin
         .from("users")
-        .select("email, name")
+        .select("id, email, name, user_id")
         .eq("user_id", userId)
         .single();
 
-      if (!userData?.email) {
-        console.warn(
-          `[step-8] No email found for user ${userId}, skipping notification.`,
-        );
-        return;
+      if (userError) {
+        console.error(`[step-8] Database error fetching user:`, userError);
+        return {
+          success: false,
+          reason: `Database query failed: ${userError.message}`,
+          severity: "warning",
+        };
       }
 
-      const plunkKey = process.env.PLUNK_API_KEY;
-      if (!plunkKey) {
-        console.warn(
-          "[step-8] PLUNK_API_KEY is not set, skipping email notification.",
-        );
-        return;
+      if (!userData) {
+        return {
+          success: false,
+          reason: "User not found in database - webhook may not have synced",
+          severity: "warning",
+          userId,
+        };
       }
 
-      const Plunk = (await import("@plunk/node")).default;
-      const plunk = new Plunk(plunkKey);
+      if (!userData.email) {
+        return {
+          success: false,
+          reason: "User account is missing email address",
+          severity: "warning",
+          userId: userData.id,
+        };
+      }
 
-      const videoTitle = script.title || "Your New Video";
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(userData.email)) {
+        return {
+          success: false,
+          reason: "User email format is invalid",
+          severity: "warning",
+          email: userData.email,
+        };
+      }
+
+      const videoTitle = (script.title || "Your New Video").replace(/[<>]/g, "");
+      const userName = (userData.name || "Creator").replace(/[<>]/g, "");
       const thumbUrl = images[0]?.imageUrl || "";
       const downloadUrl = renderResult.videoUrl;
-      const watchUrl = process.env.NEXT_PUBLIC_APP_URL
-        ? `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/videos`
-        : downloadUrl;
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+      const watchUrl = appUrl ? `${appUrl}/dashboard/videos` : downloadUrl;
 
       const htmlBody = `
-        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9fafb; border-radius: 12px;">
-          <h2 style="color: #111827; text-align: center;">Your Video is Ready! 🎉</h2>
-          <p style="color: #374151; font-size: 16px;">
-            Hi ${userData.name || "Creator"},<br/><br/>
+        <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9fafb; border-radius: 12px;">
+          <h2 style="color: #111827; text-align: center; margin: 0 0 16px 0;">Your Video is Ready!</h2>
+          <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 0 0 16px 0;">
+            Hi ${userName},<br/><br/>
             Your video <strong>"${videoTitle}"</strong> has finished generating successfully!
           </p>
-          
           <div style="background-color: white; border-radius: 8px; overflow: hidden; margin: 24px 0; border: 1px solid #e5e7eb;">
-            ${thumbUrl ? `<img src="${thumbUrl}" alt="Video Thumbnail" style="width: 100%; height: auto; display: block;" />` : ""}
-            <div style="padding: 16px; text-align: center;">
-              <a href="${watchUrl}" style="display: inline-block; background-color: #4f46e5; color: white; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: 500; font-size: 16px; margin: 8px;">View Video in Dashboard</a>
-              <a href="${downloadUrl}" style="display: inline-block; background-color: #111827; color: white; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: 500; font-size: 16px; margin: 8px;" download>Download MP4</a>
+            ${thumbUrl ? `<img src="${thumbUrl}" alt="Video Thumbnail" style="width: 100%; height: auto; display: block; max-height: 300px; object-fit: cover;" />` : '<div style="height: 200px; background: #111827; display: flex; align-items: center; justify-content: center; color: white; font-size: 14px;">Video Thumbnail</div>'}
+            <div style="padding: 20px; text-align: center;">
+              <a href="${watchUrl}" style="display: inline-block; background-color: #4f46e5; color: white; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-weight: 600; font-size: 15px; margin: 0 6px 12px 6px;">View in Dashboard</a>
+              <a href="${downloadUrl}" style="display: inline-block; background-color: #111827; color: white; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-weight: 600; font-size: 15px; margin: 0 6px 12px 6px;">Download Video</a>
             </div>
           </div>
-          
-          <p style="color: #6b7280; font-size: 14px; text-align: center;">
-            You are receiving this email because you triggered a video generation on your account.
-          </p>
         </div>
       `;
 
-      try {
-        await plunk.emails.send({
-          to: userData.email,
-          subject: `Video Ready: ${videoTitle}`,
-          body: htmlBody,
-        });
-        console.log(`[step-8] Email notification sent to ${userData.email}`);
-      } catch (err: unknown) {
-        console.error(`[step-8] Failed to send email:`, err);
+      const { Resend } = await import("resend");
+      const resend = new Resend(resendKey);
+
+      let lastError: Error | null = null;
+      const maxRetries = 3;
+      let attemptsUsed = 0;
+
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          attemptsUsed = attempt;
+
+          const sendResult = await resend.emails.send({
+            from: "onboarding@resend.dev",
+            to: userData.email,
+            subject: `Video Ready: ${videoTitle}`,
+            html: htmlBody,
+          });
+
+          if (sendResult.data?.id) {
+            const { error: updateError } = await supabaseAdmin
+              .from("videos")
+              .update({
+                email_sent: true,
+                email_sent_at: new Date().toISOString(),
+              })
+              .eq("id", finalVideoId);
+
+            if (updateError) {
+              console.warn(`[step-8] Failed to update email status in DB:`, updateError);
+            }
+
+            return {
+              success: true,
+              email: userData.email,
+              messageId: sendResult.data.id,
+              attempt,
+            };
+          }
+
+          const errorMsg = sendResult.error?.message || "Unexpected Resend response";
+          throw new Error(errorMsg);
+        } catch (err) {
+          lastError = err instanceof Error ? err : new Error(String(err));
+
+          if (
+            /invalid api key|unauthorized|forbidden|missing_api_key|domain/i.test(
+              lastError.message,
+            )
+          ) {
+            break;
+          }
+
+          if (attempt < maxRetries) {
+            const delayMs = 1000 * attempt;
+            await new Promise((r) => setTimeout(r, delayMs));
+            continue;
+          }
+        }
       }
+
+      const { error: updateError } = await supabaseAdmin
+        .from("videos")
+        .update({
+          email_sent: false,
+          email_error: lastError?.message?.slice(0, 500),
+        })
+        .eq("id", finalVideoId);
+
+      if (updateError) {
+        console.error(`[step-8] Failed to update failure status in DB:`, updateError);
+      }
+
+      return {
+        success: false,
+        reason: lastError?.message || "Unknown email error",
+        email: userData.email,
+        attempts: attemptsUsed,
+        severity: "warning",
+      };
     });
+
+    // Log email result (non-blocking - video is complete regardless)
+    if (emailResult.success) {
+      console.log(`[step-8] ✅ Email notification succeeded`);
+    } else {
+      console.warn(`[step-8] ⚠️ Email notification failed or skipped:`, emailResult);
+    }
 
     return {
       success: true,
       seriesId,
-      videoId: savedVideo?.id,
+      videoId: finalVideoId,
       videoUrl: renderResult.videoUrl,
     };
   },

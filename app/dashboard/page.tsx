@@ -47,6 +47,7 @@ export default async function DashboardPage() {
         email: email,
         name: name,
         credits: 0,
+        plan: "Free",
       });
 
       if (error) {

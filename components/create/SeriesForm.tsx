@@ -11,6 +11,8 @@ import { VideoStyleSelection } from "@/components/create/VideoStyleSelection";
 import { CaptionStyleSelection } from "@/components/create/CaptionStyleSelection";
 import { SeriesDetails } from "@/components/create/SeriesDetails";
 import { StepFooter } from "@/components/create/StepFooter";
+import { UpgradeDialog } from "@/components/dialogs/UpgradeDialog";
+import { Plan } from "@/lib/plans";
 
 interface SeriesConfig {
   niche: string | null;
@@ -52,6 +54,8 @@ export function SeriesForm({
   const router = useRouter();
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showUpgradeDialog, setShowUpgradeDialog] = useState(false);
+  const [userPlan, setUserPlan] = useState<Plan | null>(null);
 
   const [seriesConfig, setSeriesConfig] = useState<SeriesConfig>(
     initialConfig || defaultConfig,
@@ -72,6 +76,17 @@ export function SeriesForm({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(seriesConfig),
         });
+
+        if (res.status === 403) {
+          // Handle plan limit error
+          const errorData = await res.json();
+          if (errorData.requiresUpgrade) {
+            setUserPlan(errorData.plan);
+            setShowUpgradeDialog(true);
+            toast.error(errorData.message || "Series limit reached. Please upgrade your plan.");
+            return;
+          }
+        }
 
         if (!res.ok) {
           const errorData = await res.text();
@@ -202,6 +217,13 @@ export function SeriesForm({
           />
         </div>
       </div>
+
+      <UpgradeDialog
+        open={showUpgradeDialog}
+        onOpenChange={setShowUpgradeDialog}
+        currentPlan={userPlan || "Free"}
+        reason="series_limit"
+      />
     </div>
   );
 }

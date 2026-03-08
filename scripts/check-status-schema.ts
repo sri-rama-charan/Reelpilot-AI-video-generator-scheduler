@@ -7,7 +7,7 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
 
 async function main() {
   console.log("Checking if status column exists on series table...");
-  const { data, error } = await supabaseAdmin
+  const { error } = await supabaseAdmin
     .from("series")
     .select("status")
     .limit(1);

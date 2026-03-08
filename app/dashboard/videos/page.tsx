@@ -14,6 +14,17 @@ interface Video {
   captions_srt: string | null;
   video_url: string | null;
   status: "pending" | "generating" | "completed" | "failed";
+  youtube_publish_status:
+    | "scheduled"
+    | "publishing"
+    | "published"
+    | "failed"
+    | null;
+  youtube_publish_at: string | null;
+  youtube_published_at: string | null;
+  youtube_publish_visibility: "private" | "public" | "unlisted" | null;
+  youtube_publish_error: string | null;
+  youtube_video_id: string | null;
   error_message: string | null;
   created_at: string;
 }
@@ -119,7 +130,11 @@ export default function VideosPage() {
       {!loading && videos.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {videos.map((video) => (
-            <VideoCard key={video.id} video={video} />
+            <VideoCard
+              key={video.id}
+              video={video}
+              onScheduleSuccess={fetchVideos}
+            />
           ))}
         </div>
       )}

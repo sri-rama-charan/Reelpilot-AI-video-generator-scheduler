@@ -58,24 +58,58 @@ export async function POST(req: Request) {
     const email = email_addresses?.[0]?.email_address;
 
     if (!email) {
+      console.error(`[clerk-webhook] No email for user ${id}`);
       return new Response("Error: No email provided", { status: 400 });
     }
 
-    const { error } = await supabaseAdmin.from("users").upsert(
-      {
+    const name = `${first_name || ""} ${last_name || ""}`.trim();
+
+    // First, check if user exists by user_id OR email
+    const { data: existingUser } = await supabaseAdmin
+      .from("users")
+      .select("id, user_id, email")
+      .or(`user_id.eq.${id},email.eq.${email}`)
+      .maybeSingle();
+
+    let error;
+
+    if (existingUser) {
+      // Update existing user - ensure user_id is always updated
+      const result = await supabaseAdmin
+        .from("users")
+        .update({
+          user_id: id,
+          email: email,
+          name: name,
+        })
+        .eq("id", existingUser.id);
+      error = result.error;
+
+      if (!error) {
+        console.log(
+          `[clerk-webhook] Updated user ${id} (db id: ${existingUser.id}), email: ${email}`,
+        );
+      }
+    } else {
+      // Insert new user with Free plan by default
+      const result = await supabaseAdmin.from("users").insert({
         user_id: id,
         email: email,
-        name: `${first_name || ""} ${last_name || ""}`.trim(),
-      },
-      { onConflict: "email" },
-    );
+        name: name,
+        credits: 0,
+        plan: "Free",
+      });
+      error = result.error;
 
-    if (error) {
-      console.error("Error inserting user into Supabase:", error);
-      return new Response("Error inserting user", { status: 500 });
+      if (!error) {
+        console.log(`[clerk-webhook] Created new user ${id}, email: ${email}`);
+      }
     }
 
-    console.log(`User ${id} successfully synced to Supabase`);
+    if (error) {
+      console.error("[clerk-webhook] Error syncing user to Supabase:", error);
+      return new Response(`Error syncing user: ${error.message}`, { status: 500 });
+    }
   }
 
   return new Response("", { status: 200 });

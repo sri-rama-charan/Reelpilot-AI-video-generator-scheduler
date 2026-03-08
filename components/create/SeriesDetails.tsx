@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { Youtube, Instagram, Mail, Clock } from "lucide-react";
 
 interface SeriesDetailsProps {

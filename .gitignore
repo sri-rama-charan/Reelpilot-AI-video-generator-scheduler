@@ -30,6 +30,10 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
+# debug scripts and output
+out.txt
+check-*.mjs
+
 # env files (can opt-in for committing if needed)
 .env*
 

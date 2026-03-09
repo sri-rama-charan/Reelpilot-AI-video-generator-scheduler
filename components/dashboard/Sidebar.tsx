@@ -5,10 +5,8 @@ import { usePathname } from "next/navigation";
 import {
   VideoIcon,
   Clapperboard,
-  BookOpen,
   CreditCard,
   Settings,
-  Zap,
   User,
   Plus,
 } from "lucide-react";
@@ -16,19 +14,12 @@ import {
 const mainNavItems = [
   { title: "Series", icon: Clapperboard, href: "/dashboard/series" },
   { title: "Videos", icon: VideoIcon, href: "/dashboard/videos" },
-  { title: "Guides", icon: BookOpen, href: "/dashboard/guides" },
   { title: "Billing", icon: CreditCard, href: "/dashboard/billing" },
   { title: "Settings", icon: Settings, href: "/dashboard/settings" },
 ];
 
 const footerNavItems = [
-  {
-    title: "Upgrade",
-    icon: Zap,
-    href: "/dashboard/upgrade",
-    className: "text-amber-400 hover:text-amber-300 hover:bg-amber-400/10",
-  },
-  { title: "Profile", icon: User, href: "/dashboard/profile" },
+  { title: "Manage Account", icon: User, href: "/dashboard/manage-account" },
 ];
 
 export function Sidebar() {
@@ -87,7 +78,7 @@ export function Sidebar() {
               key={item.href}
               href={item.href}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors group
-                ${item.className || (isActive ? "bg-white/10 text-white" : "text-slate-400 hover:text-white hover:bg-white/5")}
+                ${isActive ? "bg-white/10 text-white" : "text-slate-400 hover:text-white hover:bg-white/5"}
               `}
             >
               <item.icon className="w-5 h-5 flex-shrink-0" />

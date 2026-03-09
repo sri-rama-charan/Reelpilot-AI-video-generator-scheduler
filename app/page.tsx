@@ -125,7 +125,10 @@ export default function LandingPage() {
                     Dashboard
                   </Button>
                 </Link>
-                <UserButton />
+                <UserButton
+                  userProfileMode="navigation"
+                  userProfileUrl="/dashboard/manage-account"
+                />
               </SignedIn>
             </div>
 
@@ -203,7 +206,10 @@ export default function LandingPage() {
                 </Button>
               </Link>
               <div className="flex justify-center mt-2">
-                <UserButton />
+                <UserButton
+                  userProfileMode="navigation"
+                  userProfileUrl="/dashboard/manage-account"
+                />
               </div>
             </SignedIn>
           </div>

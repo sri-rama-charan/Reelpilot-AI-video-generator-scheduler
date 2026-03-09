@@ -11,6 +11,8 @@ export function Header() {
         {/* Profile Button from Clerk */}
         <UserButton
           afterSignOutUrl="/"
+          userProfileMode="navigation"
+          userProfileUrl="/dashboard/manage-account"
           appearance={{
             elements: {
               avatarBox: "w-9 h-9 border border-white/20",

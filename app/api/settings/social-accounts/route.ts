@@ -1,8 +1,9 @@
-import { auth } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { supabaseAdmin } from "@/lib/supabase";
 import { canConnectPlatform, type Plan } from "@/lib/plans";
+import { extractPlanFromUserMetadata, normalizePlanValue } from "@/lib/billing-plan";
 
 type SocialPlatform = "youtube" | "instagram" | "tiktok";
 
@@ -169,15 +170,27 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Failed to fetch user plan" }, { status: 500 });
     }
 
+    const dbPlan = normalizePlanValue(userData.plan) || "Free";
+    const clerkUser = await currentUser();
+    const metadataPlan = extractPlanFromUserMetadata(clerkUser);
+    const userPlan = (metadataPlan || dbPlan) as Plan;
+
+    // Keep DB in sync if Clerk metadata already reflects a changed plan.
+    if (metadataPlan && metadataPlan !== dbPlan) {
+      await supabaseAdmin
+        .from("users")
+        .update({ plan: metadataPlan })
+        .eq("user_id", userId);
+    }
+
     // Check if user's plan allows this platform
-    const userPlan = userData.plan as Plan;
     if (!canConnectPlatform(userPlan, platform)) {
       return NextResponse.json(
         {
           error: "Plan restriction",
-          message: `Your ${userData.plan} plan does not support ${platform}. Please upgrade to Unlimited to access all platforms.`,
+          message: `Your ${userPlan} plan does not support ${platform}. Please upgrade to Unlimited to access all platforms.`,
           requiresUpgrade: true,
-          plan: userData.plan,
+          plan: userPlan,
           requestedPlatform: platform,
         },
         { status: 403 }

@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "worker:dev": "tsx inngest/worker/server.ts",
+    "worker:start": "tsx inngest/worker/server.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.2.0",
@@ -26,6 +28,7 @@
     "cmdk": "^1.1.1",
     "date-fns": "^4.1.0",
     "embla-carousel-react": "^8.6.0",
+    "express": "^4.21.2",
     "framer-motion": "^12.34.3",
     "groq-sdk": "^0.37.0",
     "inngest": "^3.52.5",
@@ -52,6 +55,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/express": "^4.17.23",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",

@@ -23,7 +23,11 @@ const nextConfig: NextConfig = {
   ],
   // Ensure native rspack bindings are traced into serverless output for Remotion bundling.
   outputFileTracingIncludes: {
-    "/*": ["./node_modules/@rspack/**/*"],
+    "/*": [
+      "./node_modules/@rspack/**/*",
+      "./node_modules/remotion/**/*",
+      "./node_modules/@remotion/**/*",
+    ],
   },
 };
 

@@ -689,6 +689,7 @@ Required JSON format:
         codec: "h264",
         outputLocation: outputPath,
         inputProps,
+        concurrency: 1,
         onProgress: ({ progress }) => {
           console.log(
             `[step-7] Render progress: ${Math.round(progress * 100)}%`,

@@ -566,7 +566,8 @@ Required JSON format:
         captions_scenes: captions.scenes, // [{ order, srt, words[] }]
         images, // [{ order, prompt, imageUrl }]
         tts_provider: voiceAudio.provider,
-        status: "completed",
+        // Keep as generating until final MP4 is rendered and uploaded.
+        status: "generating",
       };
 
       if (videoId) {

@@ -15,6 +15,7 @@ import {
   Upload,
   Check,
   AlertTriangle,
+  RotateCcw,
 } from "lucide-react";
 import Image from "next/image";
 import {
@@ -76,9 +77,11 @@ const STATUS_CONFIG = {
 export function VideoCard({
   video,
   onScheduleSuccess,
+  onRetrySuccess,
 }: {
   video: Video;
   onScheduleSuccess?: () => void;
+  onRetrySuccess?: () => void;
 }) {
   const thumbnail = video.images?.[0]?.imageUrl ?? null;
   const statusCfg = STATUS_CONFIG[video.status] ?? STATUS_CONFIG.pending;
@@ -91,6 +94,9 @@ export function VideoCard({
   const [isScheduling, setIsScheduling] = useState(false);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [scheduleMessage, setScheduleMessage] = useState<string | null>(null);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
+  const [retryMessage, setRetryMessage] = useState<string | null>(null);
 
   const hasScheduledPublish =
     video.youtube_publish_status === "scheduled" && !!video.youtube_publish_at;
@@ -130,6 +136,32 @@ export function VideoCard({
       );
     } finally {
       setIsScheduling(false);
+    }
+  }
+
+  async function retryFailedVideo() {
+    setIsRetrying(true);
+    setRetryError(null);
+    setRetryMessage(null);
+
+    try {
+      const res = await fetch(`/api/videos/${video.id}/retry`, {
+        method: "POST",
+      });
+
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(payload?.error || "Failed to retry video generation.");
+      }
+
+      setRetryMessage("Retry queued. Video generation restarted.");
+      onRetrySuccess?.();
+    } catch (e) {
+      setRetryError(
+        e instanceof Error ? e.message : "Failed to retry video generation.",
+      );
+    } finally {
+      setIsRetrying(false);
     }
   }
 
@@ -260,6 +292,40 @@ export function VideoCard({
           <p className="text-red-400 text-xs bg-red-400/10 rounded-lg px-3 py-2 leading-relaxed">
             {video.error_message}
           </p>
+        )}
+
+        {video.status === "failed" && (
+          <div className="space-y-2">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                void retryFailedVideo();
+              }}
+              disabled={isRetrying}
+              className="w-full rounded-lg border border-indigo-500/30 bg-indigo-500/10 py-2 text-sm hover:bg-indigo-500/20 disabled:opacity-60 text-indigo-200"
+            >
+              <span className="inline-flex items-center gap-2">
+                {isRetrying ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <RotateCcw className="w-4 h-4" />
+                )}
+                Retry failed video
+              </span>
+            </button>
+
+            {retryMessage && (
+              <p className="text-emerald-300 text-xs bg-emerald-500/10 rounded-lg px-3 py-2 leading-relaxed">
+                {retryMessage}
+              </p>
+            )}
+
+            {retryError && (
+              <p className="text-red-400 text-xs bg-red-400/10 rounded-lg px-3 py-2 leading-relaxed">
+                {retryError}
+              </p>
+            )}
+          </div>
         )}
       </div>
     </div>

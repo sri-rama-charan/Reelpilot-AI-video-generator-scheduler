@@ -17,8 +17,14 @@ const nextConfig: NextConfig = {
     "@remotion/renderer",
     "@remotion/core",
     "@remotion/cli",
+    "@rspack/core",
+    "@rspack/binding",
     "remotion",
   ],
+  // Ensure native rspack bindings are traced into serverless output for Remotion bundling.
+  outputFileTracingIncludes: {
+    "/*": ["./node_modules/@rspack/**/*"],
+  },
 };
 
 export default nextConfig;

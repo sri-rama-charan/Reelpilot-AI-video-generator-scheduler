@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Youtube, Instagram, AlertTriangle, Loader2, Unlink2, Lock } from "lucide-react";
 import { UpgradeDialog } from "@/components/dialogs/UpgradeDialog";
@@ -35,7 +35,7 @@ const PLATFORM_ICONS: Record<SocialPlatform, React.ComponentType<{ className?: s
   tiktok: () => <span className="font-semibold text-sm">TT</span>,
 };
 
-export default function SettingsPage() {
+function SettingsPageContent() {
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
@@ -360,5 +360,21 @@ export default function SettingsPage() {
         />
       )}
     </div>
+  );
+}
+
+export default function SettingsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="p-8 text-white min-h-screen flex items-center justify-center">
+          <div className="flex items-center text-slate-300">
+            <Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading settings...
+          </div>
+        </div>
+      }
+    >
+      <SettingsPageContent />
+    </Suspense>
   );
 }

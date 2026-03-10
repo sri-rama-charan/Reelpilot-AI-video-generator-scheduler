@@ -7,7 +7,7 @@ export const publishWorker = inngest.createFunction(
   {
     id: "publish-worker",
     name: "Publish Video Worker",
-    concurrency: { limit: 10 },
+    concurrency: { limit: 5 },
   },
   { event: "video/publish.scheduled" },
   async ({ event, step }) => {

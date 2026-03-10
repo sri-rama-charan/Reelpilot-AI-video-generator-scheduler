@@ -59,13 +59,26 @@ CREATE TABLE IF NOT EXISTS videos (
   -- Optional error message if status = 'failed'
   error_message    TEXT,
 
+  -- ── Email notification tracking ──────────────────────────────────────────
+  -- Whether completion email was successfully sent
+  email_sent       BOOLEAN        DEFAULT NULL,
+
+  -- Timestamp when email was sent
+  email_sent_at    TIMESTAMPTZ,
+
+  -- Error message if email sending failed
+  email_error      TEXT,
+
   -- Timestamps
   created_at       TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
   updated_at       TIMESTAMPTZ    NOT NULL DEFAULT NOW()
 );
 
--- ⚠️  If the videos table ALREADY EXISTS, run this line separately:
+-- ⚠️  If the videos table ALREADY EXISTS, run these lines separately:
 ALTER TABLE IF EXISTS videos ADD COLUMN IF NOT EXISTS video_url TEXT;
+ALTER TABLE IF EXISTS videos ADD COLUMN IF NOT EXISTS email_sent BOOLEAN DEFAULT NULL;
+ALTER TABLE IF EXISTS videos ADD COLUMN IF NOT EXISTS email_sent_at TIMESTAMPTZ;
+ALTER TABLE IF EXISTS videos ADD COLUMN IF NOT EXISTS email_error TEXT;
 
 
 

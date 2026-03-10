@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import {
   VideoIcon,
   Clapperboard,
-  CreditCard,
   Settings,
   User,
   Plus,
@@ -14,7 +13,6 @@ import {
 const mainNavItems = [
   { title: "Series", icon: Clapperboard, href: "/dashboard/series" },
   { title: "Videos", icon: VideoIcon, href: "/dashboard/videos" },
-  { title: "Billing", icon: CreditCard, href: "/dashboard/billing" },
   { title: "Settings", icon: Settings, href: "/dashboard/settings" },
 ];
 

@@ -1,7 +1,7 @@
 import express from "express";
 import { serve } from "inngest/express";
 import { inngest } from "../../lib/inngest";
-import { workerFunctions } from "../functions/registry";
+import { workerFunctions } from "../functions/worker";
 
 const app = express();
 

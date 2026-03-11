@@ -33,10 +33,28 @@ export async function POST(
     }
 
     // Trigger Inngest with the pre-created video ID so it can UPDATE instead of INSERT
-    await inngest.send({
-      name: "video/generate",
-      data: { seriesId, userId, videoId: video.id },
-    });
+    try {
+      await inngest.send({
+        name: "video/generate",
+        data: { seriesId, userId, videoId: video.id },
+      });
+    } catch (sendError) {
+      const sendMessage =
+        sendError instanceof Error ? sendError.message : "Failed to queue video";
+
+      // Don't leave rows stuck in "generating" if queueing fails.
+      await supabaseAdmin
+        .from("videos")
+        .update({ status: "failed", error_message: `Queue error: ${sendMessage}` })
+        .eq("id", video.id)
+        .eq("user_id", userId);
+
+      console.error("[SERIES_GENERATE] Inngest send error:", sendError);
+      return NextResponse.json(
+        { error: `Failed to queue video generation: ${sendMessage}` },
+        { status: 502 },
+      );
+    }
 
     return NextResponse.json({ success: true, videoId: video.id });
   } catch (error) {

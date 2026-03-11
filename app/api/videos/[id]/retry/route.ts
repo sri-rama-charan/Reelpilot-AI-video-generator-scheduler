@@ -61,14 +61,30 @@ export async function POST(
       );
     }
 
-    await inngest.send({
-      name: "video/generate",
-      data: {
-        seriesId: video.series_id,
-        userId,
-        videoId,
-      },
-    });
+    try {
+      await inngest.send({
+        name: "video/generate",
+        data: {
+          seriesId: video.series_id,
+          userId,
+          videoId,
+        },
+      });
+    } catch (sendError) {
+      const sendMessage =
+        sendError instanceof Error ? sendError.message : "Failed to queue video";
+
+      await supabaseAdmin
+        .from("videos")
+        .update({ status: "failed", error_message: `Queue error: ${sendMessage}` })
+        .eq("id", videoId)
+        .eq("user_id", userId);
+
+      return NextResponse.json(
+        { error: `Failed to queue retry: ${sendMessage}` },
+        { status: 502 },
+      );
+    }
 
     return NextResponse.json({
       success: true,

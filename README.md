@@ -7,10 +7,10 @@ Short-form reel generation SaaS built with Next.js, Inngest, Supabase, and Remot
 - `Vercel`: frontend + app API routes
 - `Cloud Run`: dedicated Inngest worker for heavy render jobs
 
-This repo now splits Inngest registration:
+This repo now uses Cloud Run as the production Inngest execution endpoint:
 
-- `app/api/inngest/route.ts`: lightweight web functions only
-- `inngest/worker/server.ts`: background/render worker functions for Cloud Run
+- `app/api/inngest/route.ts`: local development compatibility endpoint
+- `inngest/worker/server.ts`: production/background/render worker functions
 
 ## Local Development
 
@@ -47,9 +47,8 @@ Set the same required env vars on Cloud Run that your generation function needs 
 
 ## Inngest Setup
 
-Add both app and worker sync URLs in Inngest Cloud:
+Use only the worker sync URL in Inngest Cloud for production:
 
-- Vercel app sync URL: `https://<your-vercel-domain>/api/inngest`
 - Worker sync URL: `https://<your-cloud-run-domain>/api/inngest`
 
-This allows web-safe functions to remain on Vercel while render jobs execute on Cloud Run.
+Do not keep the Vercel `/api/inngest` URL registered in production, otherwise jobs may execute in a serverless environment that lacks video-render dependencies.

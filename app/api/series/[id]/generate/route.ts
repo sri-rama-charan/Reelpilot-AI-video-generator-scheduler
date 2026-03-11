@@ -33,11 +33,18 @@ export async function POST(
     }
 
     // Trigger Inngest with the pre-created video ID so it can UPDATE instead of INSERT
+    // DEBUG: Log what keys are actually configured
+    const hasEventKey = !!process.env.INNGEST_EVENT_KEY || !!process.env.INNGEST_API_KEY;
+    const hasSigningKey = !!process.env.INNGEST_SIGNING_KEY;
+    console.log("[SERIES_GENERATE] Inngest config check:", { hasEventKey, hasSigningKey });
+    
     try {
+      console.log("[SERIES_GENERATE] Sending event to Inngest...");
       await inngest.send({
         name: "video/generate",
         data: { seriesId, userId, videoId: video.id },
       });
+      console.log("[SERIES_GENERATE] Event sent successfully");
     } catch (sendError) {
       const sendMessage =
         sendError instanceof Error ? sendError.message : "Failed to queue video";

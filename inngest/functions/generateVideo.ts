@@ -639,6 +639,7 @@ Required JSON format:
       console.log("[step-7] Bundling Remotion composition...");
       const bundleLocation = await bundle({
         entryPoint,
+        rspack: false,
         webpackOverride: (config) => config,
       });
 
@@ -718,6 +719,10 @@ Required JSON format:
       const { data: urlData } = supabaseAdmin.storage
         .from("vidgen-assets")
         .getPublicUrl(storagePath);
+
+      if (!urlData?.publicUrl) {
+        throw new Error("Rendered video uploaded but public URL could not be resolved");
+      }
 
       // --- 6. Save video_url back to the videos row ---
       await supabaseAdmin

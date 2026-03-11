@@ -134,6 +134,7 @@ export default function VideosPage() {
               key={video.id}
               video={video}
               onScheduleSuccess={fetchVideos}
+              onRetrySuccess={fetchVideos}
             />
           ))}
         </div>

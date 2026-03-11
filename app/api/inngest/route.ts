@@ -1,18 +1,31 @@
 import { serve } from "inngest/next";
 import { inngest } from "@/lib/inngest";
-import { helloWorld } from "@/inngest/functions/helloWorld";
-import { generateVideo } from "@/inngest/functions/generateVideo";
-import { publishWorker } from "@/inngest/functions/publishWorker";
-import { scheduleDaily } from "@/inngest/functions/scheduleDaily";
-import { youtubePublish } from "@/inngest/functions/youtubePublish";
+import { webFunctions } from "@/inngest/functions/web";
 
-export const { GET, POST, PUT } = serve({
+const isVercelProduction =
+  process.env.VERCEL === "1" && process.env.NODE_ENV === "production";
+
+// In production, Cloud Run is the single Inngest executor.
+// Keep Vercel endpoint alive for compatibility, but register no functions.
+const functions = isVercelProduction ? [] : webFunctions;
+
+const handlers = serve({
   client: inngest,
-  functions: [
-    helloWorld,
-    generateVideo,
-    publishWorker,
-    scheduleDaily,
-    youtubePublish,
-  ],
+  functions,
 });
+
+const disabledResponse = () =>
+  new Response(
+    JSON.stringify({
+      error:
+        "Inngest execution is disabled on Vercel production. Use Cloud Run /api/inngest endpoint.",
+    }),
+    {
+      status: 410,
+      headers: { "content-type": "application/json" },
+    },
+  );
+
+export const GET = isVercelProduction ? disabledResponse : handlers.GET;
+export const POST = isVercelProduction ? disabledResponse : handlers.POST;
+export const PUT = isVercelProduction ? disabledResponse : handlers.PUT;

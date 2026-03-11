@@ -10,15 +10,6 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  // Remotion packages contain native binaries (esbuild, FFmpeg bundler).
-  // Mark them as external so Turbopack never tries to bundle them.
-  serverExternalPackages: [
-    "@remotion/bundler",
-    "@remotion/renderer",
-    "@remotion/core",
-    "@remotion/cli",
-    "remotion",
-  ],
 };
 
 export default nextConfig;

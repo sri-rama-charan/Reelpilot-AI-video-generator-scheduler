@@ -566,7 +566,8 @@ Required JSON format:
         captions_scenes: captions.scenes, // [{ order, srt, words[] }]
         images, // [{ order, prompt, imageUrl }]
         tts_provider: voiceAudio.provider,
-        status: "completed",
+        // Keep as generating until final MP4 is rendered and uploaded.
+        status: "generating",
       };
 
       if (videoId) {
@@ -638,6 +639,7 @@ Required JSON format:
       console.log("[step-7] Bundling Remotion composition...");
       const bundleLocation = await bundle({
         entryPoint,
+        rspack: false,
         webpackOverride: (config) => config,
       });
 
@@ -688,6 +690,7 @@ Required JSON format:
         codec: "h264",
         outputLocation: outputPath,
         inputProps,
+        concurrency: 1,
         onProgress: ({ progress }) => {
           console.log(
             `[step-7] Render progress: ${Math.round(progress * 100)}%`,
@@ -716,6 +719,10 @@ Required JSON format:
       const { data: urlData } = supabaseAdmin.storage
         .from("vidgen-assets")
         .getPublicUrl(storagePath);
+
+      if (!urlData?.publicUrl) {
+        throw new Error("Rendered video uploaded but public URL could not be resolved");
+      }
 
       // --- 6. Save video_url back to the videos row ---
       await supabaseAdmin

@@ -9,6 +9,10 @@ import { supabaseAdmin } from "@/lib/supabase";
  */
 export async function GET() {
   try {
+    if (process.env.NODE_ENV === "production") {
+      return new NextResponse("Not Found", { status: 404 });
+    }
+
     const { userId } = await auth();
     if (!userId) return new NextResponse("Unauthorized", { status: 401 });
 
@@ -19,9 +23,6 @@ export async function GET() {
       .replace(/[\u200B-\u200D\uFEFF]/g, "")
       .replace(/^['"]|['"]$/g, "");
     const hasResendKey = !!normalizedResendKey;
-    const resendKeyPreview = hasResendKey
-      ? `${normalizedResendKey.slice(0, 8)}...`
-      : "NOT SET";
 
     // Check 2: User record in database
     const { data: userData, error: userError } = await supabaseAdmin
@@ -45,7 +46,6 @@ export async function GET() {
       checks: {
         resendApiKey: {
           configured: hasResendKey,
-          preview: resendKeyPreview,
           format: hasResendKey
             ? normalizedResendKey.startsWith("re_")
               ? "valid"
@@ -84,6 +84,10 @@ export async function GET() {
 
 export async function POST() {
   try {
+    if (process.env.NODE_ENV === "production") {
+      return new NextResponse("Not Found", { status: 404 });
+    }
+
     const { userId } = await auth();
     if (!userId) return new NextResponse("Unauthorized", { status: 401 });
 
@@ -147,8 +151,6 @@ export async function POST() {
       </div>
     `;
 
-    console.log(`[debug-email] Sending test email to ${userData.email}`);
-
     const result = await resend.emails.send({
       from: "onboarding@resend.dev", // Resend's test sender
       to: userData.email,
@@ -156,19 +158,16 @@ export async function POST() {
       html: testHtml,
     });
 
-    console.log(`[debug-email] Resend response:`, JSON.stringify(result));
-
     return NextResponse.json({
       success: true,
       message: `Test email sent to ${userData.email}`,
-      resendResponse: result,
+      resendId: result.data?.id ?? null,
     });
   } catch (error) {
     console.error("[DEBUG_EMAIL_POST]", error);
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Unknown error",
-        stack: error instanceof Error ? error.stack : undefined,
       },
       { status: 500 }
     );

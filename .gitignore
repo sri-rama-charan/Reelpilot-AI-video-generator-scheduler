@@ -36,6 +36,9 @@ check-*.mjs
 
 # env files (can opt-in for committing if needed)
 .env*
+cloudrun.env.yaml
+cloudrun.env.*.yaml
+*.secrets.yaml
 
 # vercel
 .vercel

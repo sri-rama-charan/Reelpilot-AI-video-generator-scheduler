@@ -37,9 +37,8 @@ export const generateVideo = inngest.createFunction(
           .eq("id", failedVideoId);
       }
     },
+    triggers: [{ event: "video/generate" }],
   },
-
-  { event: "video/generate" },
   async ({ event, step }) => {
     const { seriesId, userId, videoId } = event.data;
 

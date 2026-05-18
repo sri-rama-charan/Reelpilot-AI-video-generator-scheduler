@@ -6,9 +6,8 @@ export const scheduleDaily = inngest.createFunction(
   {
     id: "schedule-daily-videos",
     name: "Schedule Daily Videos",
+    triggers: [{ cron: "0 0 * * *" }],
   },
-  // Runs every day at midnight UTC
-  { cron: "0 0 * * *" },
   async ({ step }) => {
     // 1. Fetch all active series
     const activeSeries = await step.run("fetch-active-series", async () => {

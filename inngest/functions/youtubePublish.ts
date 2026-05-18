@@ -146,8 +146,8 @@ export const youtubePublish = inngest.createFunction(
     id: "youtube-publish-video",
     name: "YouTube Publish Video",
     concurrency: { limit: 5 },
+    triggers: [{ event: "video/youtube.publish.scheduled" }],
   },
-  { event: "video/youtube.publish.scheduled" },
   async ({ event, step }) => {
     const { videoId, userId, publishAt } = event.data as {
       videoId: number;

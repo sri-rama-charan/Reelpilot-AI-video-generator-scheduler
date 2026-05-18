@@ -7,8 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "worker:dev": "tsx inngest/worker/server.ts",
-    "worker:start": "tsx inngest/worker/server.ts"
+    "worker:dev": "tsx --env-file=.env.local inngest/worker/server.ts",
+    "worker:start": "tsx --env-file=.env.local inngest/worker/server.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.2.0",
